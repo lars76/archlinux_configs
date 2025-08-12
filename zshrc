@@ -309,7 +309,7 @@ bindkey '^[[Z' reverse-menu-complete
 WORDCHARS=${WORDCHARS/\/}
 
 if (( _loaded_plugins[autosuggestions] )); then
-  ZSH_AUTOSUGGEST_HIGHLIGHT_STYLE="fg=#555"
+  ZSH_AUTOSUGGEST_HIGHLIGHT_STYLE="fg=8"
 fi
 
 # §10. WELCOME SCREEN & HEALTH CHECK
