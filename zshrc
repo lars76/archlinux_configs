@@ -91,19 +91,29 @@ for dir in "${_completion_dirs[@]}"; do
   fi
 done
 
-# Initialize compinit with deterministic insecure-dir handling.
-autoload -Uz compinit
-if (( $+commands[compaudit] )); then
-  insecure_dirs=$(compaudit 2>/dev/null)
-  if [[ -n "$insecure_dirs" ]]; then
-    # Recommended fix: compaudit | xargs chmod g-w,o-w
-    compinit -u 2>/dev/null || compinit 2>/dev/null
+# Initialize compinit with a dump-age cache and deterministic insecure-dir
+# handling. On most startups the cached dump is reused via `compinit -C` (skips
+# both the security audit and the rebuild — the fast path). Only when the dump
+# is missing or stale (>24h) do we re-audit: `compinit -u` then trusts
+# group/world-writable dirs (common with a shared Homebrew on macOS) and skips
+# the interactive [y/n] prompt. Delete ~/.zcompdump to force a refresh after
+# installing new completions.
+# NOTE: compaudit is an autoloaded *function*, not an external command, so a
+# `$+commands[compaudit]` test is always false — we check its output directly.
+# NOTE: the dump-age test uses an ARRAY glob (${dump}(Nmh-24)); a glob qualifier
+# does NOT expand inside [[ ]], so testing it there would always hit the cache.
+autoload -Uz compinit compaudit
+() {
+  local zdump="${ZDOTDIR:-$HOME}/.zcompdump"
+  local -a fresh=( ${zdump}(Nmh-24) )     # non-empty iff dump exists and is < 24h old
+  if (( $#fresh )); then
+    compinit -C -d "$zdump"                                    # fast path: trust cache
+  elif [[ -n "$(compaudit 2>/dev/null)" ]]; then
+    compinit -u -d "$zdump" 2>/dev/null || compinit -d "$zdump" 2>/dev/null
   else
-    compinit 2>/dev/null
+    compinit -d "$zdump" 2>/dev/null
   fi
-else
-  compinit 2>/dev/null
-fi
+}
 
 # Completion styling.
 zstyle ':completion:*' menu select
@@ -114,8 +124,32 @@ zstyle ':completion:*:messages' format '%F{purple} -- %d --%f'
 zstyle ':completion:*:warnings' format '%F{red} -- No matches for: %d --%f'
 zstyle ':completion:*:corrections' format '%F{green}-- %d (errors: %e) --%f'
 
+# §5b. COMMAND-NOT-FOUND HANDLER
+# -------------------------------------------------------------------
+# When a command isn't found, suggest how to install it. On Linux, defer to the
+# distro's handler if installed (it maps the command to its package: pkgfile on
+# Arch, command-not-found on Debian/Ubuntu). On macOS (no such mapper ships by
+# default) fall back to a Homebrew search hint.
+if [[ "$ZSH_OS" != "macOS" ]]; then
+  for _cnf in /usr/share/doc/pkgfile/command-not-found.zsh /etc/zsh_command_not_found; do
+    [[ -r "$_cnf" ]] && source "$_cnf" && break
+  done
+  unset _cnf
+fi
+if ! (( ${+functions[command_not_found_handler]} )); then
+  command_not_found_handler() {
+    print -u2 "zsh: command not found: $1"
+    [[ "$ZSH_OS" == "macOS" ]] && (( $+commands[brew] )) && \
+      print -u2 "  search Homebrew:  brew search $1"
+    return 127
+  }
+fi
+
 # §6. PROMPT CONFIGURATION
 # -------------------------------------------------------------------
+# High-resolution clock ($EPOCHREALTIME) for sub-second command timing.
+zmodload zsh/datetime
+
 # Check for git once to avoid repeated failed calls.
 typeset -g _has_git=0
 command -v git >/dev/null 2>&1 && _has_git=1
@@ -132,6 +166,10 @@ preexec() {
 
   # If empty, do nothing
   [[ ${#words[@]} -eq 0 ]] && return
+
+  # A real command is running this cycle. This gates the outcome footer below,
+  # so Ctrl-C on an empty prompt does NOT falsely report an "interrupted" command.
+  _prompt_cmd_ran=1
 
   # Determine the candidate command to check.
   # If the command is a wrapper (sudo, env, etc.), skip wrapper + options.
@@ -153,21 +191,118 @@ preexec() {
     fi
   fi
 
-  # Check if the final command is in our interactive list.
+  # Interactive programs (editors, pagers, TUIs) don't get a duration — sitting
+  # in vim for 10 minutes shouldn't print "⏱ 10m". They still get an outcome.
   if (( _INTERACTIVE_COMMANDS[$cmd] )); then
-    unset timer
+    unset _prompt_timer
     return
   fi
 
-  # Otherwise, start the timer.
-  timer=$SECONDS
+  # Otherwise, start the duration timer and snapshot CPU for a later diff.
+  _prompt_timer=$EPOCHREALTIME
+  local REPLY; _prompt_read_cpu; _prompt_cpu0=$REPLY
 }
 
-smart_exit_status() {
-  local last_status=$?
-  if (( last_status != 0 && last_status != 141 )); then
-    echo "%F{red}✘ ${last_status}%f "
+# Command outcome + duration/CPU + finish-time footer. Everything about "what
+# happened" prints on its own line ABOVE the next prompt (Pure-style preprompt),
+# welded to the command that produced it, never decorating the line you type on.
+# Shown only when noteworthy: a failure, OR a run >= 3s (a slow success is
+# labelled too, for symmetry). Clean & fast commands print nothing. The outcome
+# is a WORD — colour only reinforces it, so it is never a colour-only signal:
+# green "ok" vs red "failed"/"interrupted"/…. CPU% (shell + child processes) is
+# shown only for slow (>= 3s) runs, where the measurement is reliable, and is
+# then shown ALWAYS — 0% meaningfully says "it waited rather than computed".
+typeset -gA _STATUS_WORDS
+_STATUS_WORDS=(
+  130 interrupted  143 terminated  137 killed  139 segfault
+  124 timeout  126 'not executable'  127 'not found'
+)
+_prompt_footer=""                    # preprompt line (incl. trailing newline) or empty
+typeset -g _prompt_cmd_ran=0         # set by preexec when a real command runs
+typeset -g _prompt_timer             # $EPOCHREALTIME at command start (unset for TUIs)
+typeset -g _prompt_cpu0=0            # CPU seconds (shell+children) at command start
+typeset -g _prompt_times_file="${TMPDIR:-/tmp}/.zsh-prompt-times.$$"
+
+# Cumulative CPU (user+sys) seconds -> REPLY, summing the SHELL's own line
+# (builtins/functions) and the CHILDREN line (external commands) from `times`,
+# so a CPU-heavy shell loop reports too, not just external processes. Captured
+# via a file redirect, NOT $(times): command substitution forks a subshell that
+# reports zero, whereas a redirect runs in the current shell. ~0.07 ms/call.
+_prompt_read_cpu() {
+  REPLY=0
+  times >| "$_prompt_times_file" 2>/dev/null || return
+  local l1 l2
+  { read -r l1; read -r l2 } <"$_prompt_times_file" 2>/dev/null || return
+  local -F total=0
+  local line u s
+  for line in "$l1" "$l2"; do            # each "0m0.29s 0m0.00s" -> user / sys
+    u=${line%% *} s=${line##* }; u=${u%s}; s=${s%s}
+    [[ $u == *m* && $s == *m* ]] || continue
+    (( total += ${u%m*} * 60 + ${u#*m} + ${s%m*} * 60 + ${s#*m} ))
+  done
+  REPLY=$total
+}
+
+# Human duration for float seconds $1 -> REPLY (e.g. 80ms, 4.2s, 18s, 2m14s).
+_prompt_fmt_dur() {
+  local -F w=$1
+  local -i ms=$(( w * 1000 )) sec=$(( w ))
+  if   (( w < 1 ));    then REPLY="${ms}ms"
+  elif (( w < 10 ));   then printf -v REPLY '%.1fs' $w
+  elif (( sec < 60 )); then REPLY="${sec}s"
+  else REPLY="$(( sec / 60 ))m$(( sec % 60 ))s"; fi
+}
+
+_prompt_cleanup() { rm -f "$_prompt_times_file" 2>/dev/null; }
+
+# Builds _prompt_footer. Must be the FIRST precmd hook so it captures $? before
+# any other hook (or its own subshells) clobbers it.
+_prompt_build_footer() {
+  local code=$?
+  _prompt_footer=""
+  # Only report for lines where a command actually ran (preexec fired) — this is
+  # what stops Ctrl-C on an empty prompt from claiming a command was interrupted.
+  (( _prompt_cmd_ran )) || { _prompt_cmd_ran=0; unset _prompt_timer; return; }
+
+  local -F wall=0
+  [[ -n "$_prompt_timer" ]] && wall=$(( EPOCHREALTIME - _prompt_timer ))
+  local failed=0
+  (( code != 0 && code != 141 )) && failed=1     # 141 = benign SIGPIPE (e.g. | head)
+
+  # Trigger: a failure, or a slow (>= 3s) command.
+  if (( failed )) || (( wall >= 3 )); then
+    local -a parts; local REPLY
+    # Outcome word (colour reinforces; the word carries the meaning).
+    if (( failed )); then
+      local w=${_STATUS_WORDS[$code]}
+      if [[ -n "$w" ]]; then parts+=("%F{red}${w}%f")
+      elif (( code > 128 && code <= 192 )); then parts+=("%F{red}SIG${signals[code-128+1]:-error}%f")
+      else parts+=("%F{red}failed%f"); fi
+    else
+      parts+=("%F{green}ok%f")
+    fi
+    # Duration always (when a timer ran, i.e. not a TUI). CPU% only for slow
+    # (>= 3s) runs, where the long window makes the times-diff reliable; there it
+    # is shown ALWAYS, including 0% (time went to waiting, not computing). Fast
+    # commands never show it — over a tiny window the number would be noise. It
+    # can exceed 100% (parallelism across cores).
+    if [[ -n "$_prompt_timer" ]]; then
+      _prompt_fmt_dur $wall; parts+=("$REPLY")
+      if (( wall >= 3 )); then
+        _prompt_read_cpu
+        local -F cpu_used=$(( REPLY - _prompt_cpu0 ))
+        (( cpu_used < 0 )) && cpu_used=0
+        local -i pct=$(( 100 * cpu_used / wall ))
+        parts+=("${pct}%% cpu")                     # %% -> literal % after prompt expansion
+      fi
+    fi
+    # Completion time (prompt escape, expanded when PROMPT renders ≈ now).
+    parts+=('%D{%H:%M:%S}')
+    _prompt_footer="${(j: · :)parts}"$'\n'
   fi
+
+  _prompt_cmd_ran=0
+  unset _prompt_timer
 }
 
 perf_git_info() {
@@ -180,27 +315,20 @@ perf_git_info() {
   [[ -n "$dirty" ]] && echo " %F{red}git:(${branch}${dirty})%f" || echo " %F{green}git:(${branch})%f"
 }
 
-venv_info() { [[ -n "$VIRTUAL_ENV" ]] && echo " %F{magenta}[$(basename "$VIRTUAL_ENV")]%f"; }
-node_info() { [[ -f "package.json" ]] && command -v node >/dev/null && echo " %F{green}node:$(node --version)%f"; }
+venv_info() { [[ -n "$VIRTUAL_ENV" ]] && echo " %F{magenta}[${VIRTUAL_ENV:t}]%f"; }
 
-_prompt_exec_time_str=""
-_prompt_update_timer() {
-  if [[ -n "$timer" ]]; then
-    local timer_result=$((SECONDS - timer))
-    if (( timer_result >= 3 )); then
-      local mins=$((timer_result / 60)) secs=$((timer_result % 60))
-      if (( mins > 0 )); then
-        _prompt_exec_time_str="%F{yellow}⏱ ${mins}m${secs}s%f"
-      else
-        _prompt_exec_time_str="%F{yellow}⏱ ${secs}s%f"
-      fi
-    else
-      _prompt_exec_time_str=""
-    fi
-    unset timer
-  else
-    _prompt_exec_time_str=""
+# node version, memoized: spawn `node --version` once and re-run only when the
+# node binary changes (e.g. after `nvm use`/`fnm use`) — not on every prompt.
+# Keyed on the resolved path, so a system node spawns once per session and a
+# version-manager switch invalidates the cache automatically.
+typeset -g _node_ver="" _node_bin=""
+node_info() {
+  [[ -f package.json ]] || return
+  local nb=${commands[node]}; [[ -n $nb ]] || return
+  if [[ $nb != $_node_bin ]]; then
+    _node_bin=$nb; _node_ver=$(node --version 2>/dev/null)
   fi
+  [[ -n $_node_ver ]] && echo " %F{green}node:${_node_ver}%f"
 }
 
 _prompt_update_title() {
@@ -210,11 +338,16 @@ _prompt_update_title() {
 }
 
 autoload -Uz add-zsh-hook
-add-zsh-hook precmd _prompt_update_timer
+add-zsh-hook precmd _prompt_build_footer   # must be first: captures $?
 add-zsh-hook precmd _prompt_update_title
+add-zsh-hook zshexit _prompt_cleanup       # remove the child-CPU scratch file
 
-PROMPT='$(smart_exit_status)%F{cyan}%n%f@%F{blue}%m%f %F{yellow}%~%f$(perf_git_info)$(venv_info)$(node_info) %# '
-RPROMPT='$_prompt_exec_time_str'
+# ${_prompt_footer} prints the outcome/duration on its own line above the prompt
+# (and only when there is something to say). The main line is anchored at the
+# margin; the %#/%% sigil keeps its plain meaning (privilege indicator) with no
+# status colouring. No RPROMPT — nothing transient sits on the line you type on.
+PROMPT='${_prompt_footer}%F{cyan}%n%f@%F{blue}%m%f %F{yellow}%~%f$(perf_git_info)$(venv_info)$(node_info) %# '
+RPROMPT=''
 
 # §7. ALIASES & SHELL FUNCTIONS
 # -------------------------------------------------------------------
@@ -300,8 +433,32 @@ done
 
 # §9. KEYBINDINGS & INTERACTIVE BEHAVIOR
 # -------------------------------------------------------------------
+# Select the emacs keymap explicitly. Without this, zsh auto-selects the *vi*
+# keymap whenever $EDITOR/$VISUAL matches *vi* — and we set EDITOR=vim above,
+# so the shell would silently start in vi insert mode. That leaves Left/Right
+# bound to vi-backward-char/vi-forward-char, which refuse to cross a line
+# boundary: on a continued/multiline buffer the arrows appear dead. All the
+# emacs-style bindings below (word motions, etc.) assume this keymap. Must come
+# before the other bindkey calls so they bind into the emacs keymap.
+bindkey -e
+
+# History navigation: Up/Down do PREFIX search — cycle through history entries
+# that BEGIN with the text before the cursor. Type "uv" then Up to walk
+# "uv", "uvx", "uv pip install", …; type "uv " (trailing space) to restrict to
+# entries starting with "uv " (the `uv` command itself). With an empty line
+# they behave like plain Up/Down, and they cope with multiline buffers (move
+# within the buffer before searching) and leave the cursor at end of line.
+autoload -Uz up-line-or-beginning-search down-line-or-beginning-search
+zle -N up-line-or-beginning-search
+zle -N down-line-or-beginning-search
+bindkey '^[[A' up-line-or-beginning-search
+bindkey '^[[B' down-line-or-beginning-search
+
+# Substring-anywhere search (matches "uv" wherever it appears in a line) stays
+# available on Ctrl+Up / Ctrl+Down when the plugin is loaded.
 if (( _loaded_plugins[history-substring-search] )); then
-  bindkey '^[[A' history-substring-search-up; bindkey '^[[B' history-substring-search-down
+  bindkey '^[[1;5A' history-substring-search-up
+  bindkey '^[[1;5B' history-substring-search-down
 fi
 bindkey '^[[1;5C' forward-word; bindkey '^[[1;3C' forward-word
 bindkey '^[[1;5D' backward-word; bindkey '^[[1;3D' backward-word
@@ -341,6 +498,38 @@ if [[ -z "${_loaded_plugins[syntax-highlighting]}" ]]; then
       _loaded_plugins[syntax-highlighting]=1; break
     fi
   done
+fi
+
+# §11b. PASTE HYGIENE
+# -------------------------------------------------------------------
+# Trim only the OUTER whitespace of PASTED text (leading/trailing spaces and
+# newlines), so a command copied from a webpage/docs runs clean and — since it
+# no longer starts with a space — is still recorded in history despite
+# HIST_IGNORE_SPACE. Crucially this touches ONLY pasted text: input you type is
+# never altered (so a deliberately-typed leading space still hides a command
+# from history), and whitespace INSIDE a multi-line paste is preserved (heredocs
+# and `\`-continued commands survive intact). Defined after the plugins so this
+# override of the bracketed-paste widget wraps cleanly around theirs.
+_trim_bracketed_paste() {
+  zle .bracketed-paste                 # perform the real paste first
+  LBUFFER=${LBUFFER##[[:space:]]#}      # strip leading whitespace/newlines
+  LBUFFER=${LBUFFER%%[[:space:]]#}      # strip trailing whitespace/newlines
+}
+zle -N bracketed-paste _trim_bracketed_paste
+
+# §12. USER PATH & LOCAL OVERRIDES
+# -------------------------------------------------------------------
+# Standard per-user bin dir (portable across Linux and macOS). Prepend only
+# if present and not already on PATH.
+if [[ -d "$HOME/.local/bin" ]]; then
+  path=("$HOME/.local/bin" ${path:#"$HOME/.local/bin"})
+fi
+
+# Machine-specific settings (secrets, extra PATH entries, umask, etc.) belong
+# in an untracked ~/.zshrc.local so this shared config stays portable and free
+# of credentials. Create it per-machine; it is sourced last so it wins.
+if [[ -r "${ZDOTDIR:-$HOME}/.zshrc.local" ]]; then
+  source "${ZDOTDIR:-$HOME}/.zshrc.local"
 fi
 
 # --- End of Configuration ---
