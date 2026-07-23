@@ -15,6 +15,17 @@ export EDITOR=${EDITOR:-vim}
 export VISUAL="$EDITOR"
 export PAGER=${PAGER:-less}
 
+# We show the active virtualenv in the prompt ourselves (venv_info), so stop the
+# `activate` script from ALSO prepending "(venv)" — otherwise it shows twice.
+# Generic: applies to uv, python -m venv, virtualenv, etc.
+export VIRTUAL_ENV_DISABLE_PROMPT=1
+
+# Refuse `pip install` outside a virtualenv, so a stray bare `pip` (or a tool/
+# script that calls it) can't silently pollute system Python. uv already enforces
+# this for `uv pip`; this backstops plain pip. Deliberate global install:
+#   PIP_REQUIRE_VIRTUALENV= pip install <pkg>
+export PIP_REQUIRE_VIRTUALENV=true
+
 # §2. NON-INTERACTIVE GUARD
 # -------------------------------------------------------------------
 # Use Zsh-specific test for interactive shell.
@@ -27,6 +38,8 @@ typeset -a _plugin_dirs=() _completion_dirs=()
 
 if [[ "$(uname -s)" == "Darwin" ]]; then
   ZSH_OS="macOS"
+  # Silence Homebrew's "Hide these hints with HOMEBREW_NO_ENV_HINTS=1" spam.
+  export HOMEBREW_NO_ENV_HINTS=1
   # Try to detect Homebrew prefix.
   if command -v brew >/dev/null 2>&1; then
     BREW_PREFIX=$(brew --prefix 2>/dev/null)
@@ -74,13 +87,16 @@ if ! mkdir -p "$(dirname -- "${HISTFILE}")" 2>/dev/null; then
   echo "Warning: Could not create history directory at $(dirname -- "${HISTFILE}")" >&2
 fi
 
-HISTSIZE=10000
-SAVEHIST=10000
+HISTSIZE=50000
+SAVEHIST=50000
 setopt HIST_IGNORE_ALL_DUPS HIST_IGNORE_SPACE HIST_VERIFY SHARE_HISTORY
-setopt APPEND_HISTORY INC_APPEND_HISTORY HIST_REDUCE_BLANKS
+setopt APPEND_HISTORY INC_APPEND_HISTORY HIST_REDUCE_BLANKS EXTENDED_HISTORY
 
 setopt AUTO_CD AUTO_PUSHD PUSHD_IGNORE_DUPS PUSHD_SILENT CORRECT
-setopt NOTIFY LONG_LIST_JOBS NO_BEEP EXTENDED_GLOB
+# INTERACTIVE_COMMENTS: allow `#` comments at the prompt (only at the start of a
+# word — URLs like host/page#frag and quoted `#` stay literal), so pasted
+# commands with trailing comments don't error.
+setopt NOTIFY LONG_LIST_JOBS NO_BEEP EXTENDED_GLOB INTERACTIVE_COMMENTS
 
 # §5. COMPLETION SYSTEM
 # -------------------------------------------------------------------
@@ -123,6 +139,9 @@ zstyle ':completion:*:descriptions' format '%F{yellow}--- %d ---%f'
 zstyle ':completion:*:messages' format '%F{purple} -- %d --%f'
 zstyle ':completion:*:warnings' format '%F{red} -- No matches for: %d --%f'
 zstyle ':completion:*:corrections' format '%F{green}-- %d (errors: %e) --%f'
+# Cache expensive completers (package managers, docker, …) between runs.
+zstyle ':completion:*' use-cache on
+zstyle ':completion:*' cache-path "${XDG_CACHE_HOME:-$HOME/.cache}/zsh/zcompcache"
 
 # §5b. COMMAND-NOT-FOUND HANDLER
 # -------------------------------------------------------------------
@@ -144,6 +163,27 @@ if ! (( ${+functions[command_not_found_handler]} )); then
     return 127
   }
 fi
+
+# §5c. TOOL INTEGRATIONS
+# -------------------------------------------------------------------
+# All guarded, so each is a no-op when the tool is absent — forward-compatible:
+# if uv is ever replaced, these simply do nothing.
+#
+# uv shell completions, cached: uv is spawned only when its binary is newer than
+# the cache, not on every startup (keeps startup fast).
+if command -v uv >/dev/null 2>&1; then
+  _uv_comp="${XDG_CACHE_HOME:-$HOME/.cache}/zsh/uv-completion.zsh"
+  if [[ ! -f "$_uv_comp" || "${commands[uv]}" -nt "$_uv_comp" ]]; then
+    mkdir -p "${_uv_comp:h}" && uv generate-shell-completion zsh >| "$_uv_comp" 2>/dev/null
+  fi
+  source "$_uv_comp" 2>/dev/null
+  unset _uv_comp
+fi
+
+# direnv: per-directory environments (a project's .envrc can activate its venv
+# on entry and unload it on exit, so an activated venv never leaks into an
+# unrelated directory). Inert until `direnv` is installed and a .envrc exists.
+command -v direnv >/dev/null 2>&1 && eval "$(direnv hook zsh)"
 
 # §6. PROMPT CONFIGURATION
 # -------------------------------------------------------------------
