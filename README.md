@@ -74,7 +74,9 @@ outcome/duration/CPU footer, tuned history + completion caching, and integration
   mkdir -p ~/.config/atuin/themes
   curl -fsSL https://raw.githubusercontent.com/catppuccin/atuin/main/themes/mocha/catppuccin-mocha-mauve.toml \
     -o ~/.config/atuin/themes/catppuccin-mocha-mauve.toml
-  # in ~/.config/atuin/config.toml:  [theme]\n  name = "catppuccin-mocha-mauve"
+  # then in ~/.config/atuin/config.toml add:
+  #   [theme]
+  #   name = "catppuccin-mocha-mauve"
   atuin import auto   # bring your existing ~/.zsh_history into atuin
   ```
 - **Tools it detects and lights up** are listed under [Dependencies](#dependencies).
