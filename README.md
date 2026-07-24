@@ -58,8 +58,8 @@ account.
 
 | Target | Command |
 | --- | --- |
-| **Global** (Linux & macOS) | `sudo install -Dm644 kitty.conf /etc/xdg/kitty/kitty.conf` |
-| **Per-user** | `install -Dm644 kitty.conf ~/.config/kitty/kitty.conf` |
+| **Global** (Linux & macOS) | `sudo mkdir -p /etc/xdg/kitty && sudo cp kitty.conf /etc/xdg/kitty/kitty.conf` |
+| **Per-user** | `mkdir -p ~/.config/kitty && cp kitty.conf ~/.config/kitty/kitty.conf` |
 
 Requires the **JetBrains Mono** font.
 
@@ -81,9 +81,10 @@ Plugins auto-install on first launch via
 ## Updating
 
 A global copy is a snapshot, not a live link — after pulling, re-copy whatever
-you installed globally:
+you installed globally (use the same paths you chose above):
 
 ```sh
 git pull
-sudo cp zshrc /etc/zsh/zshrc      # (and any other file you placed globally)
+sudo cp zshrc /etc/zshrc                       # macOS  (Arch: /etc/zsh/zshrc)
+sudo cp kitty.conf /etc/xdg/kitty/kitty.conf   # if installed globally
 ```
