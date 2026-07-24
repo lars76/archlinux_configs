@@ -24,6 +24,7 @@ All optional — detected at runtime; the config works without them.
 | zsh-autosuggestions | inline suggestions | `brew install zsh-autosuggestions` | `yay -S zsh-autosuggestions` |
 | zsh-syntax-highlighting | syntax colours | `brew install zsh-syntax-highlighting` | `yay -S zsh-syntax-highlighting` |
 | zsh-history-substring-search | ↑/↓ substring search | `brew install zsh-history-substring-search` | `yay -S zsh-history-substring-search` |
+| atuin | `Ctrl+R` history search² (dates, dirs, exit codes) | `brew install atuin` | `yay -S atuin` |
 | eza | better `ls` | `brew install eza` | `yay -S eza` |
 | bat | better `cat` | `brew install bat` | `yay -S bat` |
 | ripgrep | `rg`, vim `:Rg` | `brew install ripgrep` | `yay -S ripgrep` |
@@ -34,14 +35,15 @@ All optional — detected at runtime; the config works without them.
 | fastfetch | welcome screen | `brew install fastfetch` | `yay -S fastfetch` |
 
 ¹ Catppuccin colours need a **true-colour** terminal (kitty ✓; Terminal.app → ANSI). vim also needs `curl` + network for its first-launch plugin bootstrap.
+² atuin is optional; for the matching Catppuccin theme run the one-time setup below.
 
 Everything at once:
 
 ```sh
 # macOS
-brew install vivid eza bat ripgrep fzf zoxide direnv uv fastfetch zsh-autosuggestions zsh-syntax-highlighting zsh-history-substring-search && brew install --cask font-jetbrains-mono
+brew install vivid eza bat ripgrep fzf zoxide direnv uv fastfetch atuin zsh-autosuggestions zsh-syntax-highlighting zsh-history-substring-search && brew install --cask font-jetbrains-mono
 # Arch
-yay -S vivid eza bat ripgrep fzf zoxide direnv uv fastfetch zsh-autosuggestions zsh-syntax-highlighting zsh-history-substring-search ttf-jetbrains-mono
+yay -S vivid eza bat ripgrep fzf zoxide direnv uv fastfetch atuin zsh-autosuggestions zsh-syntax-highlighting zsh-history-substring-search ttf-jetbrains-mono
 ```
 
 ## zsh — `zshrc`
@@ -64,6 +66,17 @@ outcome/duration/CPU footer, tuned history + completion caching, and integration
 - **Colour scheme:** Catppuccin Mocha — syntax highlighting, autosuggestions, the
   completion menu, and (with `vivid`) file colours, matching kitty + vim. Applied
   only on true-colour terminals; others fall back to plain ANSI.
+- **History search:** if `atuin` is installed, **`Ctrl+R`** opens a SQLite-backed
+  search UI showing each command's time, directory and exit code; it also feeds the
+  inline autosuggestion. `↑`/`↓` stay on the built-in prefix search. Guarded — no
+  atuin, no change. One-time setup for the matching theme:
+  ```sh
+  mkdir -p ~/.config/atuin/themes
+  curl -fsSL https://raw.githubusercontent.com/catppuccin/atuin/main/themes/mocha/catppuccin-mocha-mauve.toml \
+    -o ~/.config/atuin/themes/catppuccin-mocha-mauve.toml
+  # in ~/.config/atuin/config.toml:  [theme]\n  name = "catppuccin-mocha-mauve"
+  atuin import auto   # bring your existing ~/.zsh_history into atuin
+  ```
 - **Tools it detects and lights up** are listed under [Dependencies](#dependencies).
 
 ### Shared Homebrew on a multi-admin Mac

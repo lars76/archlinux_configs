@@ -664,6 +664,30 @@ _trim_bracketed_paste() {
 }
 zle -N bracketed-paste _trim_bracketed_paste
 
+# §11c. ATUIN — SQLITE-BACKED SHELL HISTORY
+# -------------------------------------------------------------------
+# Rich, searchable history (records timestamp, working directory, exit code and
+# duration per command) on Ctrl+R — a full search UI that fixes the flat
+# ~/.zsh_history's scrambled ordering and lets you see WHEN each command ran.
+# Guarded, so it is a no-op when atuin is absent and the config stays portable.
+#
+# Initialised LAST — after zsh-autosuggestions (§8) and zsh-syntax-highlighting
+# (§11) — as the atuin docs require, so its ZLE widgets wrap cleanly over theirs.
+# atuin binds BOTH Ctrl+R and Up/Down: pressing Up (with the line empty or after
+# typing a prefix like "uv ") opens the atuin search UI filtered by that text,
+# instead of silently filling the line. atuin's init also prepends "atuin" to
+# ZSH_AUTOSUGGEST_STRATEGY, so the inline autosuggestion and the search UI draw
+# from the SAME history — set the strategy yourself in ~/.zshrc.local (sourced
+# after this) to opt out. Appearance/theme live in ~/.config/atuin/config.toml
+# (Catppuccin Mocha, matching the shell). The Up-key search honours the
+# filter_mode_shell_up_key_binding / search_mode_shell_up_key_binding settings.
+if command -v atuin >/dev/null 2>&1; then
+  eval "$(atuin init zsh)"
+  # atuin 18.x binds '?' (on an empty line) to an AI feature that needs an atuin
+  # account; restore '?' as an ordinary self-inserting character.
+  bindkey -M emacs '?' self-insert 2>/dev/null
+fi
+
 # §12. USER PATH & LOCAL OVERRIDES
 # -------------------------------------------------------------------
 # Standard per-user bin dir (portable across Linux and macOS). Prepend only
