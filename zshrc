@@ -93,6 +93,9 @@ setopt HIST_IGNORE_ALL_DUPS HIST_IGNORE_SPACE HIST_VERIFY SHARE_HISTORY
 setopt APPEND_HISTORY INC_APPEND_HISTORY HIST_REDUCE_BLANKS EXTENDED_HISTORY
 
 setopt AUTO_CD AUTO_PUSHD PUSHD_IGNORE_DUPS PUSHD_SILENT CORRECT
+# COMBINING_CHARS: display base+combining Unicode as one glyph (macOS's default
+# /etc/zshrc sets this; keep it so replacing that file globally loses nothing).
+setopt COMBINING_CHARS
 # INTERACTIVE_COMMENTS: allow `#` comments at the prompt (only at the start of a
 # word — URLs like host/page#frag and quoted `#` stay literal), so pasted
 # commands with trailing comments don't error.
@@ -504,6 +507,10 @@ bindkey '^[[1;5C' forward-word; bindkey '^[[1;3C' forward-word
 bindkey '^[[1;5D' backward-word; bindkey '^[[1;3D' backward-word
 bindkey '^[[Z' reverse-menu-complete
 WORDCHARS=${WORDCHARS/\/}
+
+# Free Ctrl-S / Ctrl-Q from terminal XON/XOFF flow control, so they're usable as
+# keybindings (e.g. Ctrl-S to save in Vim) instead of freezing the terminal.
+[[ -t 0 ]] && stty -ixon 2>/dev/null
 
 if (( _loaded_plugins[autosuggestions] )); then
   ZSH_AUTOSUGGEST_HIGHLIGHT_STYLE="fg=8"
