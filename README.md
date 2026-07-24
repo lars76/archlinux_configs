@@ -71,13 +71,7 @@ outcome/duration/CPU footer, tuned history + completion caching, and integration
   inline autosuggestion. `↑`/`↓` stay on the built-in prefix search. Guarded — no
   atuin, no change. One-time setup for the matching theme:
   ```sh
-  mkdir -p ~/.config/atuin/themes
-  curl -fsSL https://raw.githubusercontent.com/catppuccin/atuin/main/themes/mocha/catppuccin-mocha-mauve.toml \
-    -o ~/.config/atuin/themes/catppuccin-mocha-mauve.toml
-  # then in ~/.config/atuin/config.toml add:
-  #   [theme]
-  #   name = "catppuccin-mocha-mauve"
-  atuin import auto   # bring your existing ~/.zsh_history into atuin
+  mkdir -p ~/.config/atuin/themes && curl -fsSL https://raw.githubusercontent.com/catppuccin/atuin/main/themes/mocha/catppuccin-mocha-mauve.toml -o ~/.config/atuin/themes/catppuccin-mocha-mauve.toml && { grep -qxF '[theme]' ~/.config/atuin/config.toml 2>/dev/null || printf '\n[theme]\nname = "catppuccin-mocha-mauve"\n' >> ~/.config/atuin/config.toml; } && atuin import auto
   ```
 - **Tools it detects and lights up** are listed under [Dependencies](#dependencies).
 
