@@ -101,6 +101,96 @@ setopt COMBINING_CHARS
 # commands with trailing comments don't error.
 setopt NOTIFY LONG_LIST_JOBS NO_BEEP EXTENDED_GLOB INTERACTIVE_COMMENTS
 
+# §4b. COLOR SCHEME — Catppuccin Mocha
+# -------------------------------------------------------------------
+# Exact catppuccin-mocha palette for syntax highlighting, autosuggestions, file
+# colours (ls/eza/completion, via `vivid`), fzf, and the completion menu — so the
+# shell matches kitty + vim. Guarded on true colour ($COLORTERM): terminals that
+# can't do 24-bit (e.g. macOS Terminal.app) keep the plain ANSI defaults instead of
+# rendering broken hex. Set here — before §5 (completion), §8 (autosuggestions) and
+# §11 (syntax-highlighting) — so each consumer sees the values in time.
+typeset -g _truecolor=0
+[[ $COLORTERM == (truecolor|24bit) ]] && _truecolor=1
+
+if (( _truecolor )); then
+  # ls/eza/completion file colours from vivid's catppuccin-mocha theme. Cached like
+  # the uv-completion block so vivid spawns only when its binary changes, not every
+  # startup. No-op without vivid (install: brew install vivid / pacman -S vivid).
+  if command -v vivid >/dev/null 2>&1; then
+    _lsc="${XDG_CACHE_HOME:-$HOME/.cache}/zsh/ls-colors-catppuccin"
+    if [[ ! -f "$_lsc" || "${commands[vivid]}" -nt "$_lsc" ]]; then
+      mkdir -p "${_lsc:h}" && vivid generate catppuccin-mocha >| "$_lsc" 2>/dev/null
+    fi
+    [[ -s "$_lsc" ]] && export LS_COLORS="$(<"$_lsc")"
+    unset _lsc
+  fi
+
+  # zsh-autosuggestions grey → overlay0.
+  ZSH_AUTOSUGGEST_HIGHLIGHT_STYLE="fg=#6c7086"
+
+  # zsh-syntax-highlighting → catppuccin mocha (set before §11 sources the plugin;
+  # source: catppuccin/zsh-syntax-highlighting, themes/catppuccin_mocha).
+  ZSH_HIGHLIGHT_HIGHLIGHTERS=(main cursor)
+  typeset -gA ZSH_HIGHLIGHT_STYLES
+  ZSH_HIGHLIGHT_STYLES[default]='fg=#cdd6f4'
+  ZSH_HIGHLIGHT_STYLES[cursor]='fg=#cdd6f4'
+  ZSH_HIGHLIGHT_STYLES[comment]='fg=#585b70'
+  ZSH_HIGHLIGHT_STYLES[command]='fg=#a6e3a1'
+  ZSH_HIGHLIGHT_STYLES[builtin]='fg=#a6e3a1'
+  ZSH_HIGHLIGHT_STYLES[function]='fg=#a6e3a1'
+  ZSH_HIGHLIGHT_STYLES[alias]='fg=#a6e3a1'
+  ZSH_HIGHLIGHT_STYLES[suffix-alias]='fg=#a6e3a1'
+  ZSH_HIGHLIGHT_STYLES[global-alias]='fg=#a6e3a1'
+  ZSH_HIGHLIGHT_STYLES[reserved-word]='fg=#a6e3a1'
+  ZSH_HIGHLIGHT_STYLES[hashed-command]='fg=#a6e3a1'
+  ZSH_HIGHLIGHT_STYLES[precommand]='fg=#a6e3a1,italic'
+  ZSH_HIGHLIGHT_STYLES[autodirectory]='fg=#fab387,italic'
+  ZSH_HIGHLIGHT_STYLES[single-hyphen-option]='fg=#fab387'
+  ZSH_HIGHLIGHT_STYLES[double-hyphen-option]='fg=#fab387'
+  ZSH_HIGHLIGHT_STYLES[back-quoted-argument]='fg=#cba6f7'
+  ZSH_HIGHLIGHT_STYLES[history-expansion]='fg=#cba6f7'
+  ZSH_HIGHLIGHT_STYLES[commandseparator]='fg=#f38ba8'
+  ZSH_HIGHLIGHT_STYLES[back-quoted-argument-delimiter]='fg=#f38ba8'
+  ZSH_HIGHLIGHT_STYLES[back-double-quoted-argument]='fg=#f38ba8'
+  ZSH_HIGHLIGHT_STYLES[back-dollar-quoted-argument]='fg=#f38ba8'
+  ZSH_HIGHLIGHT_STYLES[single-quoted-argument]='fg=#f9e2af'
+  ZSH_HIGHLIGHT_STYLES[double-quoted-argument]='fg=#f9e2af'
+  ZSH_HIGHLIGHT_STYLES[rc-quote]='fg=#f9e2af'
+  ZSH_HIGHLIGHT_STYLES[command-substitution-quoted]='fg=#f9e2af'
+  ZSH_HIGHLIGHT_STYLES[command-substitution-delimiter-quoted]='fg=#f9e2af'
+  ZSH_HIGHLIGHT_STYLES[command-substitution-delimiter]='fg=#cdd6f4'
+  ZSH_HIGHLIGHT_STYLES[command-substitution-delimiter-unquoted]='fg=#cdd6f4'
+  ZSH_HIGHLIGHT_STYLES[process-substitution-delimiter]='fg=#cdd6f4'
+  ZSH_HIGHLIGHT_STYLES[dollar-quoted-argument]='fg=#cdd6f4'
+  ZSH_HIGHLIGHT_STYLES[dollar-double-quoted-argument]='fg=#cdd6f4'
+  ZSH_HIGHLIGHT_STYLES[assign]='fg=#cdd6f4'
+  ZSH_HIGHLIGHT_STYLES[named-fd]='fg=#cdd6f4'
+  ZSH_HIGHLIGHT_STYLES[numeric-fd]='fg=#cdd6f4'
+  ZSH_HIGHLIGHT_STYLES[redirection]='fg=#cdd6f4'
+  ZSH_HIGHLIGHT_STYLES[arg0]='fg=#cdd6f4'
+  ZSH_HIGHLIGHT_STYLES[globbing]='fg=#cdd6f4'
+  ZSH_HIGHLIGHT_STYLES[unknown-token]='fg=#eba0ac'
+  ZSH_HIGHLIGHT_STYLES[single-quoted-argument-unclosed]='fg=#eba0ac'
+  ZSH_HIGHLIGHT_STYLES[double-quoted-argument-unclosed]='fg=#eba0ac'
+  ZSH_HIGHLIGHT_STYLES[dollar-quoted-argument-unclosed]='fg=#eba0ac'
+  ZSH_HIGHLIGHT_STYLES[back-quoted-argument-unclosed]='fg=#eba0ac'
+  ZSH_HIGHLIGHT_STYLES[path]='fg=#cdd6f4,underline'
+  ZSH_HIGHLIGHT_STYLES[path_prefix]='fg=#cdd6f4,underline'
+  ZSH_HIGHLIGHT_STYLES[path_pathseparator]='fg=#f38ba8,underline'
+  ZSH_HIGHLIGHT_STYLES[path_prefix_pathseparator]='fg=#f38ba8,underline'
+
+  # fzf colours (guarded; activates once fzf is installed).
+  if command -v fzf >/dev/null 2>&1; then
+    export FZF_DEFAULT_OPTS="${FZF_DEFAULT_OPTS}
+--color=bg+:#313244,bg:#1e1e2e,spinner:#f5e0dc,hl:#f38ba8
+--color=fg:#cdd6f4,header:#f38ba8,info:#cba6f7,pointer:#f5e0dc
+--color=marker:#b4befe,fg+:#cdd6f4,prompt:#cba6f7,hl+:#f38ba8
+--color=selected-bg:#45475a,border:#6c7086,label:#cdd6f4"
+  fi
+else
+  ZSH_AUTOSUGGEST_HIGHLIGHT_STYLE="fg=8"   # ANSI fallback (non-true-colour terminals)
+fi
+
 # §5. COMPLETION SYSTEM
 # -------------------------------------------------------------------
 # Add completion directories to fpath, avoiding duplicates.
@@ -137,11 +227,22 @@ autoload -Uz compinit compaudit
 # Completion styling.
 zstyle ':completion:*' menu select
 zstyle ':completion:*' matcher-list 'm:{a-zA-Z}={A-Za-z}' 'r:|[._-]=* r:|=*' 'l:|=* r:|=*'
-[[ -n "$LS_COLORS" ]] && zstyle ':completion:*' list-colors "${(s.:.)LS_COLORS}"
-zstyle ':completion:*:descriptions' format '%F{yellow}--- %d ---%f'
-zstyle ':completion:*:messages' format '%F{purple} -- %d --%f'
-zstyle ':completion:*:warnings' format '%F{red} -- No matches for: %d --%f'
-zstyle ':completion:*:corrections' format '%F{green}-- %d (errors: %e) --%f'
+# File colours from $LS_COLORS (set in §4b via vivid) + catppuccin selection
+# highlight (ma = surface0 bg / text fg); labels in catppuccin hex. Non-true-colour
+# terminals keep the plain ANSI labels and only colour the menu if LS_COLORS exists.
+if (( _truecolor )); then
+  zstyle ':completion:*' list-colors "${(s.:.)LS_COLORS}" 'ma=48;2;49;50;68;38;2;205;214;244'
+  zstyle ':completion:*:descriptions' format '%F{#cba6f7}--- %d ---%f'
+  zstyle ':completion:*:messages'     format '%F{#89b4fa} -- %d --%f'
+  zstyle ':completion:*:warnings'     format '%F{#f38ba8} -- No matches for: %d --%f'
+  zstyle ':completion:*:corrections'  format '%F{#a6e3a1}-- %d (errors: %e) --%f'
+else
+  [[ -n "$LS_COLORS" ]] && zstyle ':completion:*' list-colors "${(s.:.)LS_COLORS}"
+  zstyle ':completion:*:descriptions' format '%F{yellow}--- %d ---%f'
+  zstyle ':completion:*:messages'     format '%F{purple} -- %d --%f'
+  zstyle ':completion:*:warnings'     format '%F{red} -- No matches for: %d --%f'
+  zstyle ':completion:*:corrections'  format '%F{green}-- %d (errors: %e) --%f'
+fi
 # Cache expensive completers (package managers, docker, …) between runs.
 zstyle ':completion:*' use-cache on
 zstyle ':completion:*' cache-path "${XDG_CACHE_HOME:-$HOME/.cache}/zsh/zcompcache"
@@ -512,9 +613,8 @@ WORDCHARS=${WORDCHARS/\/}
 # keybindings (e.g. Ctrl-S to save in Vim) instead of freezing the terminal.
 [[ -t 0 ]] && stty -ixon 2>/dev/null
 
-if (( _loaded_plugins[autosuggestions] )); then
-  ZSH_AUTOSUGGEST_HIGHLIGHT_STYLE="fg=8"
-fi
+# (ZSH_AUTOSUGGEST_HIGHLIGHT_STYLE is set in §4b — catppuccin hex on true colour,
+#  fg=8 otherwise.)
 
 # §10. WELCOME SCREEN & HEALTH CHECK
 # -------------------------------------------------------------------

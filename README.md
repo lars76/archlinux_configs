@@ -13,6 +13,37 @@ Global = every user on the machine inherits it with no personal dotfile.
 System files are read *before* the per-user ones, so a user can still override
 (or opt out entirely with `unsetopt GLOBAL_RCS` in their `~/.zshenv`).
 
+## Dependencies
+
+All optional — detected at runtime; the config works without them.
+
+| Tool | Enables | macOS | Arch |
+| --- | --- | --- | --- |
+| JetBrains Mono | kitty font | `brew install --cask font-jetbrains-mono` | `yay -S ttf-jetbrains-mono` |
+| vivid | catppuccin `ls`/completion colours¹ | `brew install vivid` | `yay -S vivid` |
+| zsh-autosuggestions | inline suggestions | `brew install zsh-autosuggestions` | `yay -S zsh-autosuggestions` |
+| zsh-syntax-highlighting | syntax colours | `brew install zsh-syntax-highlighting` | `yay -S zsh-syntax-highlighting` |
+| zsh-history-substring-search | ↑/↓ substring search | `brew install zsh-history-substring-search` | `yay -S zsh-history-substring-search` |
+| eza | better `ls` | `brew install eza` | `yay -S eza` |
+| bat | better `cat` | `brew install bat` | `yay -S bat` |
+| ripgrep | `rg`, vim `:Rg` | `brew install ripgrep` | `yay -S ripgrep` |
+| fzf | fuzzy history/files | `brew install fzf` | `yay -S fzf` |
+| zoxide | smart `cd` | `brew install zoxide` | `yay -S zoxide` |
+| direnv | per-directory envs | `brew install direnv` | `yay -S direnv` |
+| uv | Python + completions | `brew install uv` | `yay -S uv` |
+| fastfetch | welcome screen | `brew install fastfetch` | `yay -S fastfetch` |
+
+¹ Catppuccin colours need a **true-colour** terminal (kitty ✓; Terminal.app → ANSI). vim also needs `curl` + network for its first-launch plugin bootstrap.
+
+Everything at once:
+
+```sh
+# macOS
+brew install vivid eza bat ripgrep fzf zoxide direnv uv fastfetch zsh-autosuggestions zsh-syntax-highlighting zsh-history-substring-search && brew install --cask font-jetbrains-mono
+# Arch
+yay -S vivid eza bat ripgrep fzf zoxide direnv uv fastfetch zsh-autosuggestions zsh-syntax-highlighting zsh-history-substring-search ttf-jetbrains-mono
+```
+
 ## zsh — `zshrc`
 
 Single-file interactive config: OS detection, a fast prompt with an
@@ -30,9 +61,10 @@ outcome/duration/CPU footer, tuned history + completion caching, and integration
   `PATH`, `umask`).
 - **macOS caveat:** a *major* macOS upgrade rewrites `/etc/zshrc`, wiping the
   global copy. Fine if you rarely upgrade; otherwise prefer the per-user install.
-- **Optional tools** it lights up when present: `eza`/`exa`, `bat`, `fzf`,
-  `zoxide`, `direnv`, `uv`, `fastfetch`, `zsh-autosuggestions`,
-  `zsh-syntax-highlighting`, `zsh-history-substring-search`.
+- **Colour scheme:** Catppuccin Mocha — syntax highlighting, autosuggestions, the
+  completion menu, and (with `vivid`) file colours, matching kitty + vim. Applied
+  only on true-colour terminals; others fall back to plain ANSI.
+- **Tools it detects and lights up** are listed under [Dependencies](#dependencies).
 
 ### Shared Homebrew on a multi-admin Mac
 
