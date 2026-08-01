@@ -119,6 +119,42 @@ Plugins auto-install on first launch via
 `curl` + network). Fuzzy-find (`<leader>ff` / `fb` / `fg`) needs `fzf` +
 `ripgrep`.
 
+## Claude Code — `claude/`
+
+Per-user only; Claude Code reads `~/.claude` and has no global config path.
+
+```sh
+mkdir -p ~/.claude
+cp claude/statusline.sh ~/.claude/statusline.sh
+chmod +x ~/.claude/statusline.sh
+sed "s|__HOME__|$HOME|" claude/settings.json > ~/.claude/settings.json
+```
+
+`settings.json` carries preferences only — model, effort level, permission mode,
+the two LSP plugins, and the status line. The `__HOME__` placeholder is the one
+path that has to be rewritten at install time, hence the `sed`.
+
+- **`statusline.sh`** prints the status line Claude Code shows under the prompt:
+  working directory, context usage, and the 5-hour and weekly rate limits, each
+  with a bar and its reset time. A `runs out` column appears on a limit only when
+  the current burn rate would exhaust that budget before it resets, so its
+  presence is the warning — yellow when the shortfall is under a tenth of the
+  window, red beyond that. Written in zsh; the only dependency is `jq`
+  (`yay -S jq` / `brew install jq`). Times come from zsh's own `strftime`
+  builtin rather than `date`, which avoids the GNU/BSD split, so the same file
+  runs unmodified on Arch and macOS. It forks exactly one process per refresh.
+- **Plugins** (`pyright-lsp`, `clangd-lsp`) reinstall themselves on first run
+  from Anthropic's built-in marketplace — nothing to copy. They need `pyright`
+  and `clangd` on the system to do anything.
+- **Not committed, deliberately:** `~/.claude/.credentials.json` (OAuth tokens)
+  and `~/.claude.json` (machine state, MCP auth). Everything else under
+  `~/.claude` — session transcripts, caches, plugin payloads, per-project
+  memory — is machine-local and regenerable.
+- **Machine-specific permission grants** accumulate in
+  `~/.claude/settings.local.json`, which stays local, same idea as
+  `~/.zshrc.local`. Promote a rule to the committed `settings.json` only when
+  it is genuinely reusable across machines.
+
 ## Updating
 
 A global copy is a snapshot, not a live link — after pulling, re-copy whatever
@@ -128,4 +164,5 @@ you installed globally (use the same paths you chose above):
 git pull
 sudo cp zshrc /etc/zshrc                       # macOS  (Arch: /etc/zsh/zshrc)
 sudo cp kitty.conf /etc/xdg/kitty/kitty.conf   # if installed globally
+cp claude/statusline.sh ~/.claude/statusline.sh   # per-user, same snapshot rule
 ```
