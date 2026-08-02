@@ -130,6 +130,15 @@ if (( _truecolor )); then
 
   # zsh-syntax-highlighting → catppuccin mocha (set before §11 sources the plugin;
   # source: catppuccin/zsh-syntax-highlighting, themes/catppuccin_mocha).
+  #
+  # DIVERGES FROM UPSTREAM in three places, marked below: the path separators and
+  # the command separator are overlay0 rather than red. Upstream puts red on
+  # punctuation that appears in almost every line you type — every "/" of every
+  # path, every "|" of every pipeline — which leaves nothing legible for the case
+  # red is for. Overlay0 sits ~3.4x from both the background and the path's own
+  # text, so a separator stays visible while reading as punctuation. It is the
+  # same grey as the autosuggestion above, deliberately: both mean "not the point".
+  # Re-syncing this block from upstream will silently undo it.
   ZSH_HIGHLIGHT_HIGHLIGHTERS=(main cursor)
   typeset -gA ZSH_HIGHLIGHT_STYLES
   ZSH_HIGHLIGHT_STYLES[default]='fg=#cdd6f4'
@@ -149,7 +158,7 @@ if (( _truecolor )); then
   ZSH_HIGHLIGHT_STYLES[double-hyphen-option]='fg=#fab387'
   ZSH_HIGHLIGHT_STYLES[back-quoted-argument]='fg=#cba6f7'
   ZSH_HIGHLIGHT_STYLES[history-expansion]='fg=#cba6f7'
-  ZSH_HIGHLIGHT_STYLES[commandseparator]='fg=#f38ba8'
+  ZSH_HIGHLIGHT_STYLES[commandseparator]='fg=#6c7086'          # diverges: was red
   ZSH_HIGHLIGHT_STYLES[back-quoted-argument-delimiter]='fg=#f38ba8'
   ZSH_HIGHLIGHT_STYLES[back-double-quoted-argument]='fg=#f38ba8'
   ZSH_HIGHLIGHT_STYLES[back-dollar-quoted-argument]='fg=#f38ba8'
@@ -176,8 +185,8 @@ if (( _truecolor )); then
   ZSH_HIGHLIGHT_STYLES[back-quoted-argument-unclosed]='fg=#eba0ac'
   ZSH_HIGHLIGHT_STYLES[path]='fg=#cdd6f4,underline'
   ZSH_HIGHLIGHT_STYLES[path_prefix]='fg=#cdd6f4,underline'
-  ZSH_HIGHLIGHT_STYLES[path_pathseparator]='fg=#f38ba8,underline'
-  ZSH_HIGHLIGHT_STYLES[path_prefix_pathseparator]='fg=#f38ba8,underline'
+  ZSH_HIGHLIGHT_STYLES[path_pathseparator]='fg=#6c7086,underline'        # diverges: was red
+  ZSH_HIGHLIGHT_STYLES[path_prefix_pathseparator]='fg=#6c7086,underline' # diverges: was red
 
   # fzf colours (guarded; activates once fzf is installed).
   if command -v fzf >/dev/null 2>&1; then
