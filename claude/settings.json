@@ -1,21 +1,60 @@
 {
+  "model": "opus[1m]",
+  "fallbackModel": [
+    "opus",
+    "sonnet[1m]"
+  ],
+  "effortLevel": "high",
+  "alwaysThinkingEnabled": true,
+  "showThinkingSummaries": true,
+
   "permissions": {
     "allow": [
-      "WebFetch"
+      "WebFetch",
+      "Bash(touch ~/.cache/claude-no-draft-check-*)",
+      "Bash(rm -f ~/.cache/claude-no-draft-check-*)"
     ],
     "defaultMode": "auto"
   },
-  "model": "opus[1m]",
+
+  "tui": "fullscreen",
+  "theme": "custom:catppuccin-mocha",
+  "editorMode": "normal",
+  "statusLine": {
+    "type": "command",
+    "command": "__HOME__/.claude/statusline.sh",
+    "refreshInterval": 5
+  },
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python __HOME__/.claude/draft-check.py"
+          }
+        ]
+      }
+    ]
+  },
+  "spinnerTipsEnabled": false,
+  "preferredNotifChannel": "kitty",
+  "autoMemoryEnabled": false,
+
+  "attribution": {
+    "commit": "",
+    "pr": ""
+  },
+
   "enabledPlugins": {
     "pyright-lsp@claude-plugins-official": true,
     "clangd-lsp@claude-plugins-official": true
   },
-  "effortLevel": "high",
+
+  "cleanupPeriodDays": 365,
+  "autoUpdatesChannel": "latest",
+
   "skipWorkflowUsageWarning": true,
-  "skipAutoPermissionPrompt": true,
-  "statusLine": {
-    "type": "command",
-    "command": "__HOME__/.claude/statusline.sh",
-    "refreshInterval": 60
-  }
+  "skipAutoPermissionPrompt": true
 }
