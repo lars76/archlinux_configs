@@ -32,7 +32,17 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python __HOME__/.claude/draft-check.py"
+            "command": "python3 __HOME__/.claude/draft-check.py"
+          }
+        ]
+      }
+    ],
+    "SessionEnd": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 -c 'import json,pathlib,sys; s=str(json.load(sys.stdin).get(\"session_id\") or \"\"); s and (pathlib.Path.home()/\".cache\"/(\"claude-no-draft-check-\"+s)).unlink(missing_ok=True)'"
           }
         ]
       }

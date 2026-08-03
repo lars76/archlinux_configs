@@ -159,30 +159,106 @@ about tokens.
 - **`CLAUDE.md`** is six lines of standing instructions, loaded at the start of
   every session in every repository. It says not to write docstrings, tests, or
   type annotations until they are asked for, not to delete existing ones, to
-  target Python 3.14 or newer unless a project's `requires-python` says otherwise,
+  target Python 3.13 or newer unless a project's `requires-python` says otherwise,
   and to avoid em-dashes and emoji. Keep it short: the file is loaded in full on
   every request, and a long one gets ignored in the middle.
 
 - **`draft-check.py`** is the `PostToolUse` hook that backs the first two lines of
   `CLAUDE.md`, since a rule in a prompt is a request and a hook is not. It reads
-  the tool payload on stdin and reports docstrings, type annotations, `from
-  __future__ import annotations`, new test files, and single-line private helpers.
-  It never blocks and never edits: the write has already happened, and exit 2 only
-  feeds the message back as text.
+  the tool payload on stdin and reports docstrings (module, class and function),
+  type annotations, redundant `from __future__ import annotations`, new test files,
+  and single-line private helpers. It never blocks and never edits: the write has
+  already happened, and exit 2 only feeds the message back as text.
 
-  It inspects **only what the current edit added**, located by finding the tool's
-  `new_string` or `content` in the file. Pre-existing docstrings and typing are
-  never reported, which is what makes it usable in a repo that is already fully
-  documented. Editing an existing test file is silent; only creating one is
-  flagged. The one-line rule fires only on `_`-prefixed helpers called at most
-  once, so public functions and `@property` are left alone. No dependencies beyond
-  the standard library: no ruff, no git.
+  It re-execs itself on `python3.12` or newer when the `python3` that started it is
+  older, because macOS still ships 3.9.6 as `/usr/bin/python3` and that cannot parse
+  `match` or PEP 695. Without this, 19 files in the main work tree failed
+  `ast.parse` and every check on them was skipped in silence. If no newer
+  interpreter is on `PATH` it says which file it could not parse instead of exiting
+  0. Arch's `python3` is current, so the re-exec is a no-op there.
 
-  To suppress it while writing documentation or tests you actually asked for,
-  `touch ~/.cache/claude-no-draft-check-$CLAUDE_CODE_SESSION_ID`. The file is
+  The `from __future__ import annotations` report is conditional: it fires only
+  when nothing in the file relies on deferral, meaning no `TYPE_CHECKING`-only
+  name, no forward reference, no class naming itself in its own body, no dotted
+  annotation whose submodule import is missing, and no name the analysis cannot
+  resolve at all — unresolvable names count as needing deferral, because a wrong
+  "redundant" tells the agent to delete a line the file needs. On 3.13
+  that import is still load-bearing in those cases and only becomes unconditionally
+  redundant on 3.14 under PEP 649.
+
+  It inspects **only what the current edit added**. The added lines come from the
+  tool response's `structuredPatch`, which carries exact new-file line numbers per
+  hunk: every `replace_all` site is covered, a `new_string` that also occurs
+  earlier in the file cannot mislead it, and a docstring an edit merely carried
+  through unchanged is diff context rather than an addition. A `Write` over an
+  existing file arrives with an empty patch, so the old content from the response
+  is diffed with `difflib`; when no usable response is present at all it falls
+  back to finding the tool's `new_string` or `content` in the file, which was the
+  original mechanism. A rewritten line counts as added in a diff, so anything on
+  it is additionally checked against the old content: a docstring or annotation
+  carried verbatim through a rename or rewrite is recognised and skipped.
+  Pre-existing docstrings and typing are therefore never reported (changing the
+  text of an existing docstring still reports it, the edit being about
+  documentation then), which is what makes it usable in a repo that is already
+  fully documented. Editing or
+  overwriting an existing test file is silent; only creating one is flagged. The
+  one-line rule fires only on `_`-prefixed helpers whose every reference is a
+  direct call and at most one exists — `sorted(rows, key=_key)` is a reference
+  that cannot be inlined at a call site, so it does not trip it. No dependencies
+  beyond the standard library: no ruff, no git.
+
+  Every invocation on a Python file appends one line to `~/.claude/drafts/log.jsonl`
+  (edits to other file types exit before anything is written, so `invocations`
+  below really counts Python edits), because the
+  hook spent its entire first existence running zero times out of 41 and nothing
+  noticed: a failed hook is a non-blocking error the model never sees and the user
+  only sees by looking. `py` and `parsed` are the tripwires for exactly that. Any
+  `3.9.x` in `py` means the re-exec broke; any `parsed: false` means the checks
+  were skipped (a non-UTF-8 file lands here too, logged rather than crashing the
+  hook). `span` says which added-line source ran — `patch`, `difflib`, `find`, or
+  `none` — so a harness change that stops sending `tool_response` shows up as
+  `find` lines instead of going unnoticed. `reported` counts what this edit was
+  told about; `file` carries the
+  whole-file docstring and annotated-def totals, which is what makes "did Claude
+  act on it" answerable at all, since span-gating means a removed docstring is
+  never re-reported and its absence proves nothing on its own. A failed log write
+  is swallowed: it must never cost an edit.
+
+  Four questions it exists to answer, the first being the tripwire above:
+
+  ```sh
+  L=~/.claude/drafts/log.jsonl
+  # is the hook alive at all: must be zero unparsed, no 3.9.x interpreter
+  jq -s '{invocations:length, unparsed:[.[]|select(.parsed==false)]|length,
+          interpreters:(group_by(.py)|map({(.[0].py):length})|add)}' $L
+  # is CLAUDE.md working: fired should shrink relative to edits over weeks
+  jq -s '[.[]|select(.bypass==false)] as $p
+         | {edits:($p|length), fired:([$p[]|select(.reported|length>0)]|length),
+            by_rule:([$p[]|.reported|to_entries[]]|group_by(.key)
+                     |map({(.[0].key):(map(.value)|add)})|add)}' $L
+  # does Claude act on the feedback: removed vs ignored
+  jq -s 'group_by(.session+"|"+.path)|map(select(length>1))
+         | map({first:.[0].file.docstrings, last:.[-1].file.docstrings})
+         | {removed:[.[]|select(.last<.first)]|length,
+            ignored:[.[]|select(.last>=.first and .first>0)]|length}' $L
+  # was the second pass deliberate: bypassed edits and what they added
+  jq -s '[.[]|select(.bypass)]|{edits:length,
+          docstrings:([.[]|.reported.docstring//0]|add)}' $L
+  ```
+
+  A line per edit rather than per session, so unlike `reviews/log.jsonl` this has
+  useful signal within days. The third query is a proxy and not proof: a falling
+  count can also mean the code was deleted.
+
+  To suppress it while writing documentation, tests, or typing you actually asked
+  for, `touch ~/.cache/claude-no-draft-check-$CLAUDE_CODE_SESSION_ID`. The file is
   keyed to the session, so concurrent sessions do not interfere and an orphan left
-  by a session that ended is inert. `CLAUDE.md` tells Claude to set and clear it,
-  so in practice you ask for documentation and never touch the file yourself. It
+  by a session that ended is inert. A `SessionEnd` hook removes it when the
+  session ends normally; a crashed process never runs that hook, so its flag
+  survives until the same session is resumed and ends properly — the hook narrows
+  the stale-flag window rather than closing it. `CLAUDE.md` tells Claude to
+  set and clear it, so in practice you ask for documentation and never touch the
+  file yourself. It
   lives in `~/.cache` rather than `~/.claude` because `~/.claude` is a protected
   path that no allow rule can pre-approve, so a switch there would prompt for
   permission every time and defeat the purpose.
@@ -339,43 +415,58 @@ about tokens.
   root, not a file list, and what gets transmitted cannot be enumerated in advance;
   the plan says that plainly instead of implying a precision it does not have.
 
-  Findings from the two are then merged, and each survivor is handed to its own
-  read-only Sonnet agent on a fresh context and told to *refute* it, against a
-  rubric passed verbatim. One agent per finding is what keeps the twelfth judgment
-  independent of the first six, and asking for refutation rather than confirmation
-  is what stops a reviewer's confidence substituting for evidence. The rubric
-  returns two values, because one number cannot carry both of them: confidence
-  that the claim is *true*, and severity if it is. Only confidence filters —
-  anything under 80 is listed with the refutation that sank it — while severity
-  merely orders what survives, so a certain but rare serious bug is reported last
-  rather than silently dropped, which is what a single blended score does to it.
-  Relevance stays the job of an explicit false-positive list, which differs by
-  mode: a diff review excludes pre-existing issues and untouched lines, and an
-  architecture review cannot, since those are exactly what it was asked about.
-  Both reviewers are scrutinised equally — checking only Codex would treat
-  same-model output as more trustworthy, which is the bias the command exists to
-  counter. Where the two disagree the disagreement is the finding, so it is never
-  averaged away.
+  Findings from the two are then merged and verified adversarially, but not all
+  the same way. Claims about documentation consistency — this text says X, that
+  artifact does Y — the session adjudicates itself by citing both locations,
+  because a fresh agent re-reading two lines it already has in context buys
+  nothing; the exception is when the session authored the changes under review,
+  where self-review bias means agents verify everything. Every other claim goes
+  through a Claude Code workflow script (`~/.claude/workflows/r-verify.js`) that
+  groups findings by code location and runs one read-only Sonnet refuter per
+  location with schema-validated verdicts — grouping cuts the agent count by the
+  location-collision rate without any candidate losing its own verdict, and the
+  refutation framing is what stops a reviewer's confidence substituting for
+  evidence. The rubric lives verbatim in that script, its single source, and
+  returns two values because one number cannot carry both: confidence that the
+  claim is *true*, and severity if it is. Confidence marks rather than filters —
+  entries under 80 appear in the report flagged WEAK, killed findings are listed
+  with the refutation that sank them — while severity merely orders, so a certain
+  but rare serious bug is reported last rather than silently dropped. Relevance
+  stays the job of an explicit exclusions list, which differs by mode: a diff
+  review excludes pre-existing issues and untouched lines, and an architecture
+  review cannot, since those are exactly what it was asked about. Both reviewers
+  are scrutinised equally — checking only Codex would treat same-model output as
+  more trustworthy, which is the bias the command exists to counter. Where the
+  two disagree the disagreement is the finding, so it is never averaged away.
+  The report closes with the session's own take — what it would fix first, what
+  it would ignore, and what neither reviewer raised — because the consolidator
+  is the one participant that knows the whole history, and the findings are
+  already in its context to act on when asked.
 
-  The plan shows the literal command line rather than a summary of settings, which
-  is both the disclosure of what will run and the only documentation the flags
-  need. Everything in it is fixed — Codex on `gpt-5.6-sol`, the reviewer on Opus,
-  verifiers on Sonnet — and nothing is offered as a choice, though anything can be
-  changed by saying so. The one exception is the mode line, which lists its
-  alternatives because that is the single guess only you can correct. Approval runs
-  through a prompt rather than by waiting for a reply, which is not a stylistic
-  choice: a command's tool permissions last only for the turn that invoked it, so
-  stopping to wait for the word "go" would revoke every permission the run is
-  about to need.
+  The plan shown before the gate is three sentences — what gets read, what is
+  withheld when blind, what comes back — with the command lines kept in `r.md`
+  where the executor needs them rather than printed at you. Everything is
+  fixed — Codex on `gpt-5.6-sol`, the reviewer on Opus, verifiers on Sonnet —
+  and nothing is offered as a choice, though anything can be changed by saying
+  so. The one exception is the mode, which the gate's options let you correct
+  with one keypress. Approval runs through a prompt rather than by waiting for a
+  reply, which is not a stylistic choice: a command's tool permissions last only
+  for the turn that invoked it, so stopping to wait for the word "go" would
+  revoke every permission the run is about to need. Reviewers get no deadline —
+  a slow reviewer is doing work, and only one that errors is given up on.
 
   Every run appends one line to `~/.claude/reviews/log.jsonl`: mode, whether the
-  inferred mode was corrected, the models used, Codex's own token accounting from
-  its `--json` stream, and the full score distribution including the rejected
-  findings. The log answers the question the command cannot answer about itself —
-  how often nothing gets filtered, which is what a rubber-stamping verifier looks
-  like from the outside. A `notes` field is left null for a one-line human verdict
-  after the fact. Nothing else here records Codex usage; the status line tracks
-  Claude's limits and is blind to the other budget.
+  inferred mode was corrected, the label of the gate option actually chosen, the
+  models used, Codex's own token accounting from its `--json` stream, the full
+  score distribution including the rejected findings, and `filtered_by`, which
+  attributes the killed findings to the reviewer that raised them — the one
+  question the earlier schema could not answer. The log answers what the command
+  cannot answer about itself — how often nothing gets filtered, which is what a
+  rubber-stamping verifier looks like from the outside. A `notes` field is left
+  null for a one-line human verdict after the fact. Lines from before the schema
+  grew simply lack the new keys, so queries take them with jq's `// default`.
+  Nothing else here records Codex usage; the status line tracks Claude's limits
+  and is blind to the other budget.
 
   Neither reviewer can modify the project: Codex runs under `-s read-only`, which
   forbids writes but still permits commands, so it can check live values without
@@ -411,4 +502,9 @@ sudo cp zshrc /etc/zshrc                       # macOS  (Arch: /etc/zsh/zshrc)
 sudo cp kitty.conf /etc/xdg/kitty/kitty.conf   # if installed globally
 cp claude/statusline.sh ~/.claude/statusline.sh   # per-user, same snapshot rule
 cp claude/themes/catppuccin-mocha.json ~/.claude/themes/
+cp claude/commands/commit.md claude/commands/r.md ~/.claude/commands/
+mkdir -p ~/.claude/workflows && cp claude/workflows/r-verify.js ~/.claude/workflows/
+cp claude/draft-check.py ~/.claude/draft-check.py
+cp claude/CLAUDE.md ~/.claude/CLAUDE.md
+sed "s|__HOME__|$HOME|g" claude/settings.json > ~/.claude/settings.json
 ```
