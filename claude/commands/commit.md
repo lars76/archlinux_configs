@@ -22,6 +22,8 @@ allowed-tools: Bash(git status:*), Bash(git diff:*), Bash(git log:*), Bash(git b
 - Typed prefixes, last 300: !`git log -300 --format=%s 2>/dev/null | grep -cE '^(feat|fix|docs|style|refactor|perf|test|build|ci|chore|revert)(\(.+\))?!?: '`
 - Scoped prefixes, last 300: !`git log -300 --format=%s 2>/dev/null | grep -E '^[a-z0-9][a-z0-9/_.-]*: [A-Za-z]' | grep -cvE '^(feat|fix|docs|style|refactor|perf|test|build|ci|chore|revert)(\(.+\))?!?: '`
 - Subject length, median of 100: !`git log -100 --format=%s 2>/dev/null | awk '{print length}' | sort -n | awk '{a[NR]=$1} END{print a[int(NR/2)]}'`
+- Unprefixed subjects capitalised: !`git log -300 --format=%s 2>/dev/null | grep -vE '^[a-z0-9][a-z0-9/_.()-]*: ' | grep -cE '^[A-Z]'` of !`git log -300 --format=%s 2>/dev/null | grep -cvE '^[a-z0-9][a-z0-9/_.()-]*: '`
+- Prefixed subjects capitalised after the colon: !`git log -300 --format=%s 2>/dev/null | grep -E '^[a-z0-9][a-z0-9/_.()-]*: .' | sed 's/^[^:]*: //' | grep -cE '^[A-Z]'` of !`git log -300 --format=%s 2>/dev/null | grep -cE '^[a-z0-9][a-z0-9/_.()-]*: .'`
 - Recent subjects: !`git log -12 --format='%s' 2>/dev/null`
 
 ## Flow
@@ -50,7 +52,13 @@ If the tree is clean, say so in one line and stop.
    see whether scopes are used: `fix(asusd):` or bare `fix:`.
 2. Scoped count is 30% or more → `subsystem: description`, where the subsystem comes
    from the changed paths and matches the granularity in the recent subjects.
-3. Otherwise → free text. Match the recent subjects for capitalisation and mood.
+3. Otherwise → free text, matching the recent subjects for mood.
+
+**Capitalisation** comes from the counted figures above, never from whichever recent
+subjects you happened to read. The defaults, when a repo has too little history to
+count: capitalise an unprefixed subject, because it is a standalone sentence, and
+lowercase the description after a prefix colon, because it continues one. A repo that
+disagrees wins: GNOME projects capitalise after the colon in 100% of subjects.
 
 Match the median subject length. **One line per commit, 60 characters maximum, no body.**
 Bodies only if the request above explicitly asks for one.
