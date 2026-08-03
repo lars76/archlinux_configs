@@ -147,6 +147,20 @@ zmodload zsh/files
 # printf would otherwise misread and misprint them.
 export LC_NUMERIC=C
 
+# The bars are three-byte glyphs, and zsh pads by byte under a non-UTF-8
+# ctype — an `su` login on a box whose zshrc sets no LANG lands in exactly
+# that, mangles ▓ into its raw bytes and drifts every column. LC_ALL would
+# override the choice, so it has to go; LC_NUMERIC above stays in force
+# either way, and one of these two locales exists on every target box.
+case ${(L)${LC_ALL:-${LC_CTYPE:-${LANG:-}}}} in
+  *utf-8*|*utf8*) ;;
+  *)
+    unset LC_ALL
+    if [[ $OSTYPE == darwin* ]]; then export LC_CTYPE=en_US.UTF-8
+    else                              export LC_CTYPE=C.UTF-8
+    fi ;;
+esac
+
 FIVE_HOUR=18000     # seconds in the 5-hour window
 ONE_WEEK=604800     # seconds in the 7-day window
 
@@ -217,9 +231,20 @@ if (( api_age > FETCH_TTL && since_try > RETRY_TTL )); then
   mkdir -p -- $cache_dir 2>/dev/null
   : >| $marker 2>/dev/null
   {
+    # The same JSON lives at a different address per OS: Linux writes it to
+    # disk, macOS keeps it in the login keychain. The first keychain read may
+    # raise a permission dialog; this block is detached, so nothing on screen
+    # waits for it — allow it once and every later poll is silent.
+    if [[ -r $HOME/.claude/.credentials.json ]]; then
+      creds_json=$(<$HOME/.claude/.credentials.json)
+    elif [[ $OSTYPE == darwin* ]]; then
+      creds_json=$(security find-generic-password -s 'Claude Code-credentials' -w 2>/dev/null)
+    else
+      creds_json=''
+    fi
     creds=$(jq -r '[.claudeAiOauth.accessToken // "",
                     ((.claudeAiOauth.expiresAt // 0) / 1000 | floor)] | @tsv' \
-                 $HOME/.claude/.credentials.json 2>/dev/null)
+                 <<< $creds_json 2>/dev/null)
     tok=${creds%%$'\t'*} exp=${creds##*$'\t'}
     if [[ -n $tok ]] && (( exp > EPOCHSECONDS )); then
       # $$-suffixed: the marker makes an overlap unlikely, not impossible.
