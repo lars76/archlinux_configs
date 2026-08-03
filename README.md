@@ -260,10 +260,16 @@ about tokens.
   normally produces a message and nothing else, leaving `git add`, `git push`, and
   any merge or tag to be asked for one at a time.
 
-  It is read-only by construction: `allowed-tools` grants only the reading half of
-  git, so the command cannot commit or push even if it decides to. You run the
-  block yourself, or say so and it runs in the next turn under the usual rules.
-  That is why it needs no approval gate, unlike `/r`.
+  It cannot write. `disallowed-tools` removes `git add`, `commit`, `push`, `merge`,
+  `tag`, `checkout`, `reset` and `rebase` for the duration of the command, so it
+  proposes and stops whatever it decides. Reading stays available, so it can still
+  open a diff to judge how changes should be grouped. The restriction clears with
+  your next message, which is how "run it" then works under the usual rules. That
+  is why it needs no approval gate, unlike `/r`.
+
+  Note that `allowed-tools` does the opposite of what the name suggests: it
+  pre-approves without restricting. Listing only read-only git commands there
+  leaves everything else available rather than blocked.
 
   The convention is read from the repository rather than configured, because there
   is no single right answer across the repos worked on from here. Three are in
@@ -288,6 +294,23 @@ about tokens.
   A file whose changes span two groups goes with the dominant one and the output
   says so, since `git add -p` needs an interactive terminal that is not available
   here.
+
+  It also refuses to propose something that would fail or do damage. Before any
+  push it compares the real remote head against your recorded upstream with one
+  `git ls-remote`, about 1.5 seconds and no download, because a stale
+  `origin/main` reports "0 behind" right up until the push is rejected; when they
+  differ it puts `git pull --rebase` in front. A branch with no upstream gets
+  `push -u` with the remote's actual name, which is not always `origin`. If the
+  repository is mid-merge or mid-rebase, or any file is unmerged, that is the whole
+  answer and nothing is proposed on top of it. On a detached HEAD it says so and
+  offers `git switch -c`. If local history was rewritten after being pushed, an
+  ordinary push is rejected and `pull --rebase` would drag the old commits back, so
+  on your own branch it proposes `--force-with-lease` and never bare `--force`, and
+  on a shared or main branch it proposes no push at all and asks to talk it through.
+
+  Release cadence comes from the interval between the last two tags rather than
+  total commits divided by tag count: with a single tag that ratio equals the whole
+  history, so a one-tag repo could never look due.
 
 - **`commands/r.md`** adds `/r`, which asks Codex and a blank-context Claude the
   same question in parallel and returns one consolidated answer. It replaces a
