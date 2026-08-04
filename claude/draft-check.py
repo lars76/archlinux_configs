@@ -1,4 +1,4 @@
-import ast, builtins, difflib, json, os, pathlib, re, shutil, socket, sys, time
+import ast, builtins, difflib, io, json, os, pathlib, re, shutil, socket, sys, time, tokenize
 
 # The hook inherits whatever `python3` resolves to. On macOS that is Apple's
 # frozen 3.9.6, too old to parse `match` or PEP 695, which made ast.parse raise
@@ -51,6 +51,71 @@ def docstring_of(node):
             and isinstance(first.value.value, str):
         return first
     return None
+
+
+# Qualified so two same-named methods in different classes cannot alias, which
+# is what lets the "did this node already have one" test below be trusted. The
+# prefix follows only def and class boundaries, but the walk descends through
+# everything, so a def inside `if TYPE_CHECKING:` still gets the enclosing name.
+def qualified_defs(tree):
+    yield tree, "module", "<module>"
+
+    def rec(node, prefix):
+        for child in ast.iter_child_nodes(node):
+            if isinstance(child, (ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef)):
+                qual = prefix + child.name
+                yield child, child.name, qual
+                yield from rec(child, qual + ".")
+            else:
+                yield from rec(child, prefix)
+
+    yield from rec(tree, "")
+
+
+# Reworded docstrings were the largest false-positive class: 5 of the first 9
+# reports were edits to prose that already existed, which the rule explicitly
+# permits. Exact-text carry cannot see that, because any rewording defeats it,
+# so the original file is parsed and asked which nodes already owned one.
+# None means "could not tell", and the caller then falls back to reporting.
+def docstring_owners(source):
+    try:
+        tree = ast.parse(source)
+    except (SyntaxError, ValueError):
+        return None
+    owners = {q for n, _, q in qualified_defs(tree) if docstring_of(n) is not None}
+    return owners
+
+
+# Comments live outside the AST, so they come from tokenize. Directives are
+# reported like any other comment but counted apart, because they are a
+# different act: prose explains code, a suppression silences a tool that
+# objected to it, and only one of the two is answered by writing less. Anchored,
+# so a sentence merely mentioning noqa in passing stays prose.
+SUPPRESSION = re.compile(r"#\s*(?:type:|noqa|pragma:|fmt:|ruff:|mypy:|pylint:|flake8:|isort:|"
+                         r"nosec|pyright:|pragma\b)")
+
+# The only two comments that are file mechanics rather than commentary, and only
+# where they mean anything: PEP 263 reads an encoding declaration from the first
+# two lines, a shebang works on the first alone. Nothing else is exempt.
+MECHANIC = re.compile(r"#!|#.*coding[:=]")
+
+
+def comments_of(source):
+    try:
+        toks = list(tokenize.generate_tokens(io.StringIO(source).readline))
+    # A half-written file tokenizes badly far more often than it parses badly;
+    # returning nothing degrades to "no comment reports", never a crash.
+    except (tokenize.TokenError, IndentationError, SyntaxError, ValueError):
+        return []
+    out = []
+    for t in toks:
+        if t.type != tokenize.COMMENT:
+            continue
+        text = t.string.strip()
+        if t.start[0] <= 2 and MECHANIC.match(text):
+            continue
+        out.append((t, "suppression" if SUPPRESSION.match(text) else "comment"))
+    return out
 
 
 # Every annotation a def evaluates when it executes. `args.args` alone misses
@@ -381,14 +446,34 @@ if tree is not None:
     orig_src = tr.get("originalFile") if isinstance(tr.get("originalFile"), str) else ""
     carried = lambda seg: bool(orig_src) and seg is not None and seg in orig_src
 
-    for node, label in [(tree, "module")] + [
-        (n, n.name) for n in ast.walk(tree)
-        if isinstance(n, (ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef))
-    ]:
+    had_doc = docstring_owners(orig_src) if orig_src else None
+    for node, label, qual in qualified_defs(tree):
         doc = docstring_of(node)
-        if doc is not None and span(doc.lineno, doc.end_lineno) \
-                and not carried(ast.get_source_segment(src, doc)):
-            report("docstring", f"{path}:{doc.lineno}: docstring on {label} (ignore if you were asked for documentation)")
+        if doc is None or not span(doc.lineno, doc.end_lineno):
+            continue
+        if carried(ast.get_source_segment(src, doc)):
+            continue
+        # Already had one, so this edit reworded rather than wrote. A rename
+        # changes the qualified name and so still reports, which is right: the
+        # prose came with a function that did not exist before.
+        if had_doc is not None and qual in had_doc:
+            continue
+        report("docstring", f"{path}:{doc.lineno}: docstring on {label} (ignore if you were asked for documentation)")
+
+    # Text carried verbatim is the only carry test a comment needs: it has no
+    # owning node to have "already had" one, and a moved or reindented comment
+    # keeps its text.
+    for tk, kind in comments_of(src):
+        if not span(tk.start[0], tk.end[0]) or carried(tk.string.strip()):
+            continue
+        if kind == "suppression":
+            # Name the directive rather than the hash the split would otherwise
+            # land on, so the report says which tool is being silenced.
+            directive = tk.string.strip().lstrip("#").strip().split(":")[0].split()[0]
+            report(kind, f"{path}:{tk.start[0]}: `{directive}` suppression, fix the cause "
+                         "(ignore if the suppression was asked for)")
+        else:
+            report(kind, f"{path}:{tk.start[0]}: comment (ignore if you were asked for documentation)")
 
     redundant_future = "__future__" in src and not future_needed(tree)
     for n in ast.walk(tree):
@@ -434,16 +519,40 @@ totals = {}
 if tree is not None:
     defs = [n for n in ast.walk(tree)
             if isinstance(n, (ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef))]
+    comments = comments_of(src)
+    seg = lambda n: len(ast.get_source_segment(src, n) or "")
+    # Counts answer "is the prompt working"; the character volumes answer what
+    # it is worth, which counts alone cannot, since one rambling docstring and
+    # ten one-liners are the same number. Recorded per edit so the ratio can be
+    # tracked over time rather than reconstructed by scanning transcripts, and
+    # `src` is the denominator that turns the rest into a share.
     totals = {
         "docstrings": sum(docstring_of(n) is not None for n in [tree] + defs),
         "annotated": sum(next(annotations_of(n), None) is not None for n in defs
                          if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))),
+        "comments": sum(k == "comment" for _, k in comments),
+        "suppressions": sum(k == "suppression" for _, k in comments),
+        "chars": {
+            "src": len(src),
+            "doc": sum(seg(d) for d in (docstring_of(n) for n in [tree] + defs) if d is not None),
+            "comment": sum(len(t.string.strip()) for t, k in comments if k == "comment"),
+            "suppression": sum(len(t.string.strip()) for t, k in comments if k == "suppression"),
+            # +2 for the `: ` or `->` the annotation cannot be written without.
+            "ann": sum(seg(a) + 2 for n in defs
+                       if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))
+                       for a in annotations_of(n))
+                   + sum(seg(n.annotation) + 2 for n in ast.walk(tree)
+                         if isinstance(n, ast.AnnAssign) and n.annotation is not None),
+        },
     }
 
 record({"ts": time.strftime("%Y-%m-%dT%H:%M:%S%z"), "host": socket.gethostname(),
         "session": session, "path": path, "tool": data.get("tool_name", ""),
         "py": ".".join(str(v) for v in sys.version_info[:3]),
         "bypass": bypass, "parsed": tree is not None, "span": span_src,
+        # What this edit tried to write, so the reported counts have a
+        # denominator that is the edit rather than the whole file.
+        "added": len(ti.get("new_string") or ti.get("content") or ""),
         "reported": kinds, "file": totals})
 
 if out and not bypass:
