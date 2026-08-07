@@ -119,6 +119,35 @@ Plugins auto-install on first launch via
 `curl` + network). Fuzzy-find (`<leader>ff` / `fb` / `fg`) needs `fzf` +
 `ripgrep`.
 
+## SSH — `ssh_config`
+
+Per-user only — appends `Host` aliases (`ssh laptop`, `ssh phone`) instead of
+memorizing IPs, which drift on most routers.
+
+| Target | Command |
+| --- | --- |
+| **Per-user** | `cat ssh_config >> ~/.ssh/config` |
+
+- Addressed by **hostname**, not IP — most routers auto-register each
+  device's DHCP hostname in local DNS, so `YOUR-DEVICE.lan` stays valid even
+  as the IP changes. Confirm with `ping YOUR-DEVICE.lan` first.
+- Requires key-based auth already set up: copy each device's public key into
+  the other's `~/.ssh/authorized_keys` beforehand.
+- **Android:** install Termux from
+  [GitHub](https://github.com/termux/termux-app/releases/latest) or F-Droid
+  (same signing key either way — needed if you ever add official plugins
+  like Termux:Boot). Then:
+  ```sh
+  pkg install openssh termux-services
+  passwd            # sets a login password, needed once to copy in a key
+  sv-enable sshd    # runit brings sshd up, port 8022
+  ```
+  `sv-enable` means `sshd` restarts automatically every time Termux is
+  opened — the runit supervisor starts every enabled service on session
+  start, so there's no `sshd` command to remember. It won't survive Android
+  never opening the app at all; that needs the separate Termux:Boot plugin,
+  not covered here.
+
 ## Claude Code — `claude/`
 
 Per-user only; everything lives under `~/.claude`, identically on Arch and macOS.

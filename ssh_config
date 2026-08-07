@@ -1,0 +1,13 @@
+# Passwordless SSH between your own devices on a shared LAN, addressed by
+# router-registered hostname instead of IP (works with OpenWrt/dnsmasq-based
+# routers, which auto-register each device's DHCP hostname in local DNS —
+# check yours resolves via `ping YOUR-HOSTNAME.lan` before relying on it).
+
+Host laptop
+    HostName YOUR-LAPTOP.lan
+    User YOUR-LAPTOP-USER
+
+Host phone
+    HostName YOUR-PHONE.lan
+    User YOUR-PHONE-USER
+    Port 8022          # Termux sshd default; omit for a normal OpenSSH server
