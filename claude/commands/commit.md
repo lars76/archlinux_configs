@@ -3,30 +3,31 @@ description: Propose the full git sequence, in this repo's own convention
 argument-hint: "anything to steer the message or grouping, or nothing"
 disable-model-invocation: true
 disallowed-tools: Edit, Write, NotebookEdit, Bash(git add:*), Bash(git commit:*), Bash(git push:*), Bash(git merge:*), Bash(git checkout:*), Bash(git reset:*), Bash(git rebase:*)
-allowed-tools: Bash(git status:*), Bash(git diff:*), Bash(git log:*), Bash(git branch:*), Bash(git tag:*), Bash(git rev-list:*), Bash(git rev-parse:*), Bash(git config:*), Bash(git describe:*), Bash(git symbolic-ref:*)
+allowed-tools: Bash(git status:*), Bash(git diff:*), Bash(git log:*), Bash(git branch:*), Bash(git tag:*), Bash(git rev-list:*), Bash(git rev-parse:*), Bash(git config:*), Bash(git describe:*), Bash(git symbolic-ref:*), Bash(git ls-files:*), Bash(git remote:*), Bash(git merge-base:*), Bash(git ls-remote:*)
 ---
 
 ## Tree
 
 - Status: !`git status --short 2>/dev/null | head -40 || true`
 - Diff: !`git diff --stat 2>/dev/null | tail -30 || true`
+- Untracked, likely drafts or scratch: !`git ls-files --others --exclude-standard 2>/dev/null | grep -iE "\.(md|markdown|log|tmp|bak|orig|rej|swp|out)$|(^|/)(debug|scratch|tmp|temp|wip|draft|notes|sandbox)[-_./]|(^|/)\.DS_Store$" | grep -viE "(^|/)(readme|changelog|license|licence|contributing|security|authors|notice)\." | head -20 | paste -sd, - || true`
 
 ## Position
 
 - Branch: !`b=$(git branch --show-current 2>/dev/null); echo "${b:-DETACHED HEAD}" || true`
 - Upstream: !`git rev-parse --abbrev-ref @{u} 2>/dev/null || echo none`
-- Remotes: !`git remote -v 2>/dev/null | awk '$3=="(fetch)"{print $1}' | paste -sd, || echo none`
-- Remote branches: !`git branch -r 2>/dev/null | grep -v HEAD | sed 's|^ *[^/]*/||' | sort -u | paste -sd, | cut -c1-100 || true`
+- Remotes: !`r=$(git remote -v 2>/dev/null | awk '$3=="(fetch)"{print $1}' | paste -sd, -); echo "${r:-none}"`
+- Remote branches: !`git branch -r 2>/dev/null | grep -v HEAD | sed 's|^ *[^/]*/||' | sort -u | paste -sd, - | cut -c1-100 || true`
 - HEAD is a descendant of the upstream ref: !`git rev-parse -q --verify @{u} >/dev/null 2>&1 && (git merge-base --is-ancestor @{u} HEAD 2>/dev/null && echo yes || echo "no, local history was rewritten") || echo "n/a"`
 - Me: !`git config user.email 2>/dev/null || true`
 - Identity this commit would carry: !`echo "$(git config user.name 2>/dev/null) <$(git config user.email 2>/dev/null)>" || true`
-- Identity comes from: !`git config --show-origin user.email 2>/dev/null | sed 's|\t.*||; s|^file:||' || echo unknown`
-- Addresses this author name has used in this repo: !`n=$(git config user.name 2>/dev/null); [ -n "$n" ] && git log -300 --format='%an|%ae' 2>/dev/null | awk -F'|' -v n="$n" '$1==n{print $2}' | sort -u | paste -sd, || true; echo "${x:-}" | head -0; true`
+- Identity comes from: !`x=$(git config --show-origin user.email 2>/dev/null | sed 's|\t.*||; s|^file:||'); echo "${x:-unknown}"`
+- Addresses this author name has used in this repo: !`n=$(git config user.name 2>/dev/null); [ -n "$n" ] && git log -300 --format='%an|%ae' 2>/dev/null | awk -F'|' -v n="$n" '$1==n{print $2}' | sort -u | paste -sd, - || true`
 - Commits signed by default: !`git config commit.gpgsign 2>/dev/null || echo "no, commit.gpgsign is unset"`
 - Signed-off-by, of last 50 non-merge commits: !`git log -50 --no-merges --format='%(trailers:key=Signed-off-by,valueonly,separator=%x2C)' 2>/dev/null | grep -c . || true` of !`git log -50 --no-merges --format=%H 2>/dev/null | wc -l || true`
 - Assisted-by, same 50: !`git log -50 --no-merges --format='%(trailers:key=Assisted-by,valueonly,separator=%x2C)' 2>/dev/null | grep -c . || true`
 - Unmerged paths: !`git diff --name-only --diff-filter=U 2>/dev/null | head -20 || true`
-- Operation in progress: !`d=$(git rev-parse --git-dir 2>/dev/null); o=$(ls -d "$d"/MERGE_HEAD "$d"/rebase-merge "$d"/rebase-apply "$d"/CHERRY_PICK_HEAD "$d"/REVERT_HEAD 2>/dev/null | sed 's|.*/||' | paste -sd,); echo "${o:-none}" || true`
+- Operation in progress: !`d=$(git rev-parse --git-dir 2>/dev/null); o=$(ls -d "$d"/MERGE_HEAD "$d"/rebase-merge "$d"/rebase-apply "$d"/CHERRY_PICK_HEAD "$d"/REVERT_HEAD 2>/dev/null | sed 's|.*/||' | paste -sd, -); echo "${o:-none}" || true`
 - Local upstream ref: !`git rev-parse @{u} 2>/dev/null || echo none`
 - Remote head right now: !`u=$(git rev-parse --abbrev-ref @{u} 2>/dev/null) && timeout 10 git ls-remote "${u%%/*}" "refs/heads/${u#*/}" 2>/dev/null | cut -f1 || echo "unavailable"`
 
@@ -44,7 +45,7 @@ allowed-tools: Bash(git status:*), Bash(git diff:*), Bash(git log:*), Bash(git b
 - Commits: !`git rev-list --count HEAD 2>/dev/null || echo 0` total, !`git rev-list --count --merges HEAD 2>/dev/null || echo 0` merges
 - Unpushed commits: !`git rev-parse -q --verify @{u} >/dev/null 2>&1 && git rev-list --count @{u}..HEAD 2>/dev/null || echo "n/a"`
 - Recent merges, author email first: !`git log --merges -5 --format='%ae | %s' 2>/dev/null | cut -c1-90 || true`
-- Tags: !`git tag 2>/dev/null | wc -l || true` total, latest !`git tag --sort=-creatordate 2>/dev/null | head -4 | paste -sd, || true`
+- Tags: !`git tag 2>/dev/null | wc -l || true` total, latest !`git tag --sort=-creatordate 2>/dev/null | head -4 | paste -sd, - || true`
 - Since last tag: !`t=$(git describe --tags --abbrev=0 2>/dev/null) && git rev-list --count "$t..HEAD" 2>/dev/null || echo "no tags"`
 - Commits between the last two tags: !`set -- $(git tag --sort=-creatordate 2>/dev/null | head -2); [ -n "$2" ] && git rev-list --count "$2..$1" 2>/dev/null || echo "fewer than two tags"`
 
@@ -159,6 +160,14 @@ The untracked line is separate because `git diff --stat` cannot see untracked fi
 Omit it when there are none. List the entries from `git status --short` that start with
 `??`. When `Diff` is empty and everything is untracked, drop the fence entirely and give
 the untracked list alone: an empty code block says nothing.
+
+Anything named on the `Untracked, likely drafts or scratch` line is left out of every
+`git add`, because reviews, handovers, todo lists and debug scratch are usually session
+by-products rather than the work. Stage the rest of the untracked files normally. When
+that line is non-empty, add one line after the untracked list naming those paths and
+asking whether any of them belong in the commit, so the answer is one word rather than a
+rewritten sequence. Never silently drop them and never silently include them. If the
+request already says to include or exclude them, follow it and ask nothing.
 
 ```
 ## Repo

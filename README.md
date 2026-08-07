@@ -275,14 +275,15 @@ Measured cost of the memory preamble on 2.1.220 is 684 tokens, not the 11 to 16k
 an open bug report claims, so this is a decision about stale facts rather than
 about tokens.
 
-- **`CLAUDE.md`** is six lines of standing instructions, loaded at the start of
+- **`CLAUDE.md`** is eight lines of standing instructions, loaded at the start of
   every session in every repository. It says not to write docstrings, tests, or
-  type annotations until they are asked for, not to delete existing ones, to
-  target Python 3.13 or newer unless a project's `requires-python` says otherwise,
-  and to avoid em-dashes and emoji. Keep it short: the file is loaded in full on
-  every request, and a long one gets ignored in the middle.
+  type annotations until they are asked for, not to delete existing ones, not to
+  add a private one-line helper that could be inlined, to target Python 3.13 or
+  newer unless a project's `requires-python` says otherwise, and to avoid
+  em-dashes and emoji. Keep it short: the file is loaded in full on every request,
+  and a long one gets ignored in the middle.
 
-- **`draft-check.py`** is the `PostToolUse` hook that backs the first two lines of
+- **`draft-check.py`** is the `PostToolUse` hook that backs the checkable lines of
   `CLAUDE.md`, since a rule in a prompt is a request and a hook is not. It reads
   the tool payload on stdin and reports docstrings (module, class and function),
   type annotations, redundant `from __future__ import annotations`, new test files,
@@ -455,6 +456,13 @@ about tokens.
   normally produces a message and nothing else, leaving `git add`, `git push`, and
   any merge or tag to be asked for one at a time.
 
+  Untracked reviews, handovers, todo lists and debug scratch are left out of every
+  `git add` and listed instead, with one line asking whether any of them belong in
+  the commit. The classification is a `git ls-files --others` pipeline in the
+  command's own context block rather than a judgement call, so the same files are
+  flagged on every run; `README`, `CHANGELOG`, `LICENSE` and friends are never
+  flagged. Everything else untracked is staged normally.
+
   It cannot write. `disallowed-tools` removes `git add`, `commit`, `push`, `merge`,
   `tag`, `checkout`, `reset` and `rebase` for the duration of the command, so it
   proposes and stops whatever it decides. Reading stays available, so it can still
@@ -577,11 +585,17 @@ about tokens.
   Every run appends one line to `~/.claude/reviews/log.jsonl`: mode, whether the
   inferred mode was corrected, the label of the gate option actually chosen, the
   models used, Codex's own token accounting from its `--json` stream, the full
-  score distribution including the rejected findings, and `filtered_by`, which
+  score distribution including the rejected findings, `duration_s`, and
+  `filtered_by`, which
   attributes the killed findings to the reviewer that raised them — the one
   question the earlier schema could not answer. The log answers what the command
   cannot answer about itself — how often nothing gets filtered, which is what a
-  rubber-stamping verifier looks like from the outside. A `notes` field is left
+  rubber-stamping verifier looks like from the outside. `duration_s` subtracts an
+  epoch that the context block stamps at invocation, so the wall clock is measured
+  rather than reconstructed: parsing a timestamp back into seconds needs `date -d`
+  on Linux and `date -j -f` on macOS, and a run that improvises one of those either
+  logs a silent zero on the wrong platform or, once, invented a start four days in
+  the future and logged a negative duration. A `notes` field is left
   null for a one-line human verdict after the fact. Lines from before the schema
   grew simply lack the new keys, so queries take them with jq's `// default`.
   Nothing else here records Codex usage; the status line tracks Claude's limits
