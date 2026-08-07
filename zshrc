@@ -14,6 +14,8 @@
 export EDITOR=${EDITOR:-vim}
 export VISUAL="$EDITOR"
 export PAGER=${PAGER:-less}
+export DELTA_PAGER=${DELTA_PAGER:-"less -FR"}
+export BAT_THEME=${BAT_THEME:-"Catppuccin Mocha"}
 
 # We show the active virtualenv in the prompt ourselves (venv_info), so stop the
 # `activate` script from ALSO prepending "(venv)" — otherwise it shows twice.
@@ -75,6 +77,20 @@ else
     "/usr/share/zsh/site-functions" "/usr/share/zsh-completions"
     "/usr/local/share/zsh/site-functions" "$HOME/.local/share/zsh/site-functions"
   )
+fi
+
+if [[ -r /etc/xdg/lazygit/config.yml ]]; then
+  if [[ "$ZSH_OS" == "macOS" ]]; then
+    _lg_user="$HOME/Library/Application Support/lazygit/config.yml"
+  else
+    _lg_user="${XDG_CONFIG_HOME:-$HOME/.config}/lazygit/config.yml"
+  fi
+  if [[ -r "$_lg_user" ]]; then
+    export LG_CONFIG_FILE="/etc/xdg/lazygit/config.yml,$_lg_user"
+  else
+    export LG_CONFIG_FILE="/etc/xdg/lazygit/config.yml"
+  fi
+  unset _lg_user
 fi
 
 # §4. CORE SHELL OPTIONS & HISTORY
@@ -297,6 +313,12 @@ fi
 # on entry and unload it on exit, so an activated venv never leaks into an
 # unrelated directory). Inert until `direnv` is installed and a .envrc exists.
 command -v direnv >/dev/null 2>&1 && eval "$(direnv hook zsh)"
+
+if command -v fd >/dev/null 2>&1; then
+  export FZF_DEFAULT_COMMAND='fd --type f --hidden --exclude .git'
+  export FZF_CTRL_T_COMMAND="$FZF_DEFAULT_COMMAND"
+  export FZF_ALT_C_COMMAND='fd --type d --hidden --exclude .git'
+fi
 
 # §6. PROMPT CONFIGURATION
 # -------------------------------------------------------------------
@@ -533,7 +555,8 @@ if (( _has_git )); then
   alias g='git'; alias gs='git status -sb'; alias ga='git add'; alias gaa='git add --all'
   alias gcm='git commit -m'; alias gco='git checkout'; alias gcb='git checkout -b'
   alias gl='git log --oneline --graph --decorate --all'; alias gp='git push'; alias gpl='git pull'
-  alias gd='git --no-pager diff'; alias gds='git --no-pager diff --staged'
+  alias gd='git diff'; alias gds='git diff --staged'
+  alias gdp='git --no-pager diff'; alias gdsp='git --no-pager diff --staged'
 fi
 
 unalias zshrc 2>/dev/null
@@ -672,6 +695,14 @@ _trim_bracketed_paste() {
   LBUFFER=${LBUFFER%%[[:space:]]#}      # strip trailing whitespace/newlines
 }
 zle -N bracketed-paste _trim_bracketed_paste
+
+# §11b. FZF KEYBINDINGS
+# -------------------------------------------------------------------
+if command -v fzf >/dev/null 2>&1; then
+  eval "$(fzf --zsh)" 2>/dev/null
+  bindkey -r '^T' 2>/dev/null
+  bindkey '^F' fzf-file-widget 2>/dev/null
+fi
 
 # §11c. ATUIN — SQLITE-BACKED SHELL HISTORY
 # -------------------------------------------------------------------

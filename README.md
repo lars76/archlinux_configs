@@ -1,8 +1,8 @@
 # archlinux_configs
 
-Portable, framework-free configs for **zsh**, **kitty**, and **vim** — working on
-both Arch Linux and macOS. Install each **globally** where the OS allows,
-per-user otherwise.
+Portable, framework-free configs for **zsh**, **kitty**, **vim**, **git**, and
+**lazygit** — working on both Arch Linux and macOS. Install each **globally**
+where the OS allows, per-user otherwise.
 
 ```sh
 git clone https://github.com/lars76/archlinux_configs.git
@@ -29,21 +29,27 @@ All optional — detected at runtime; the config works without them.
 | bat | better `cat` | `brew install bat` | `yay -S bat` |
 | ripgrep | `rg`, vim `:Rg` | `brew install ripgrep` | `yay -S ripgrep` |
 | fzf | fuzzy history/files | `brew install fzf` | `yay -S fzf` |
+| fd | faster `find`; also the file/dir source for fzf⁵ | `brew install fd` | `yay -S fd` |
 | zoxide | smart `cd` | `brew install zoxide` | `yay -S zoxide` |
 | direnv | per-directory envs | `brew install direnv` | `yay -S direnv` |
 | uv | Python + completions | `brew install uv` | `yay -S uv` |
 | fastfetch | welcome screen | `brew install fastfetch` | `yay -S fastfetch` |
+| git-delta | syntax-highlighted diffs³, shared by git and lazygit | `brew install git-delta` | `yay -S git-delta` |
+| lazygit | terminal git UI⁴ | `brew install lazygit` | `yay -S lazygit` |
 
 ¹ Catppuccin colours need a **true-colour** terminal (kitty ✓; Terminal.app → ANSI). vim also needs `curl` + network for its first-launch plugin bootstrap.
 ² atuin is optional; for the matching Catppuccin theme run the one-time setup below.
+³ delta follows the same rule via `true-color = auto`: 24-bit in kitty, 256-colour elsewhere. Without it git falls back to its own plain diff, so nothing breaks.
+⁴ **0.64.0 or newer**, see the lazygit section.
+⁵ Sets `FZF_DEFAULT_COMMAND` / `FZF_CTRL_T_COMMAND` / `FZF_ALT_C_COMMAND`, so fzf lists what `.gitignore` keeps and skips `.venv`, `node_modules` and friends (in one ML repo here: 71,262 entries down to 137). Note fd hides ignored files by default, so `fd -I` is what finds them again.
 
 Everything at once:
 
 ```sh
 # macOS
-brew install vivid eza bat ripgrep fzf zoxide direnv uv fastfetch atuin zsh-autosuggestions zsh-syntax-highlighting zsh-history-substring-search && brew install --cask font-jetbrains-mono
+brew install vivid eza bat ripgrep fzf zoxide direnv uv fastfetch atuin zsh-autosuggestions zsh-syntax-highlighting zsh-history-substring-search git-delta lazygit && brew install --cask font-jetbrains-mono
 # Arch
-yay -S vivid eza bat ripgrep fzf zoxide direnv uv fastfetch atuin zsh-autosuggestions zsh-syntax-highlighting zsh-history-substring-search ttf-jetbrains-mono
+yay -S vivid eza bat ripgrep fzf zoxide direnv uv fastfetch atuin zsh-autosuggestions zsh-syntax-highlighting zsh-history-substring-search git-delta lazygit ttf-jetbrains-mono
 ```
 
 ## zsh — `zshrc`
@@ -66,6 +72,19 @@ outcome/duration/CPU footer, tuned history + completion caching, and integration
 - **Colour scheme:** Catppuccin Mocha — syntax highlighting, autosuggestions, the
   completion menu, and (with `vivid`) file colours, matching kitty + vim. Applied
   only on true-colour terminals; others fall back to plain ANSI.
+- **`bat` (aliased to `cat`) is themed separately** via `BAT_THEME`, set
+  unconditionally rather than inside that true-colour guard. bat ships the
+  Catppuccin themes itself and picks 24-bit or 256-colour based on the terminal,
+  so guarding it would leave non-true-colour terminals on bat's default Monokai,
+  which is the clash the setting exists to remove. Same reasoning as delta's
+  `true-color = auto`.
+- **Fuzzy find:** if `fzf` is installed, **`Ctrl+F`** picks a file into the
+  command line and **`Alt+C`** jumps to a directory; with `fd` installed both
+  list what `.gitignore` keeps, instead of every build artefact. `Ctrl+F` rather
+  than fzf's usual `Ctrl+T` because kitty binds that to `new_tab`; `Ctrl+F` is
+  free, and matches "find" in a browser. fzf is initialised **before** atuin so
+  atuin keeps `Ctrl+R`. In a terminal that does not grab `Ctrl+T`, fzf's default
+  file widget stays available there too.
 - **History search:** if `atuin` is installed, **`Ctrl+R`** opens a SQLite-backed
   search UI showing each command's time, directory and exit code; it also feeds the
   inline autosuggestion. `↑`/`↓` stay on the built-in prefix search. Guarded — no
@@ -103,6 +122,77 @@ account.
 | **Per-user** | `mkdir -p ~/.config/kitty && cp kitty.conf ~/.config/kitty/kitty.conf` |
 
 Requires the **JetBrains Mono** font.
+
+## git — `gitconfig`
+
+Diff styling, display defaults and two speed settings. Global on both OSes:
+`/etc/gitconfig` is git's system config, read before every per-user file.
+
+| Target | Command |
+| --- | --- |
+| **Global** (Linux & macOS) | `sudo cp gitconfig /etc/gitconfig` |
+| **Per-user** (any OS, or override) | `cp gitconfig ~/.config/git/config` |
+
+- **Identity is deliberately absent.** git reads `/etc/gitconfig`, then
+  `~/.config/git/config`, then `~/.gitconfig`, then the repo's `.git/config`,
+  each overriding the last. Only styling is global, so `user.name` and
+  `user.email` stay per-user or per-repo and **multiple identities keep
+  working**. To automate the split, `includeIf "hasconfig:remote.*.url:…"`
+  (git 2.36+) selects an identity file by remote URL, which suits repos that
+  are not grouped into per-client directories. It does not apply before a
+  remote exists, so a fresh `git init` still uses the default identity.
+- **[delta](https://github.com/dandavison/delta) is the pager**, with the
+  Catppuccin Mocha palette vendored inline as a `[delta "catppuccin-mocha"]`
+  feature rather than pulled from an include, so the file stays self-contained.
+  The syntax theme ships inside delta 0.19+; no separate `bat` theme is needed.
+  lazygit reuses the same binary and the same colours.
+- **`[safe] directory = /opt/homebrew` is carried over**, not added here.
+  Homebrew writes it for the shared multi-admin setup below, and a global
+  install overwrites the file, so it is kept in-tree to survive the copy.
+  Harmless (and meaningless) on Arch.
+- **`core.fsmonitor` + `core.untrackedCache`** cut `git status` from 0.251s to
+  0.029s on a 12 GB, 79k-file repo, which is what keeps lazygit responsive.
+  fsmonitor runs a daemon per active repo, fed by kernel filesystem events, so
+  it is roughly 2 MB and 0% CPU rather than a polling loop. On tiny repos it is
+  marginally slower (about 13 ms) because of the IPC round trip.
+- **No background jobs.** `fetch.writeCommitGraph` refreshes the commit-graph
+  during fetches you already asked for. Prefer it to `git maintenance start`,
+  which schedules hourly network prefetches and daily repacks through launchd
+  or cron: unwanted on a laptop. To build the graph once by hand, run
+  `git commit-graph write --reachable` (on a 157k-commit repo: 1.6s to write,
+  `git log --graph` then drops from 0.735s to 0.043s).
+
+## lazygit — `lazygit.yml`
+
+Catppuccin theme matching kitty, and delta wired in as the diff renderer.
+
+| Target | Command |
+| --- | --- |
+| **Global** (Linux & macOS) | `sudo mkdir -p /etc/xdg/lazygit && sudo cp lazygit.yml /etc/xdg/lazygit/config.yml` |
+| **Per-user** (macOS) | `mkdir -p ~/Library/Application\ Support/lazygit && cp lazygit.yml ~/Library/Application\ Support/lazygit/config.yml` |
+| **Per-user** (Linux) | `mkdir -p ~/.config/lazygit && cp lazygit.yml ~/.config/lazygit/config.yml` |
+
+- **lazygit has no system-wide config path**, so the global install is not
+  native: `zshrc` exports `LG_CONFIG_FILE=/etc/xdg/lazygit/config.yml` and
+  appends the per-user file when one exists (comma-separated paths are merged
+  in order, later files winning). The export is conditional because a listed
+  path that does **not** exist makes lazygit exit rather than skip it.
+- **Requires lazygit 0.64.0 or newer.** That release renamed the custom pager
+  config (`git.pagers` became `git.diffRenderers`, `pager` became `command`, an
+  empty entry became `type: rawGit`). Older versions do not understand the new
+  keys, and lazygit ignores unknown keys **silently**, so an old binary shows a
+  themed but delta-less UI instead of an error.
+- **A future schema change will stop lazygit from starting** until you re-run
+  the install. lazygit migrates an outdated config in place, and `/etc` is
+  root-owned, so the write-back fails and it aborts with a permission error.
+  Re-copying the updated file from this repo is the fix. Keeping the config in
+  `/etc` is the deliberate trade: migrations become an explicit repo update
+  instead of a silent rewrite that drifts from version control.
+- **`|` cycles the diff renderers:** delta, delta side-by-side, `--color-words`,
+  then raw git. Line numbers are clickable and open your editor at that line.
+  delta's `--navigate` does not work inside lazygit.
+- **Icons stay off.** `nerdFontsVersion` is empty because the kitty config ships
+  plain JetBrains Mono, not the Nerd Font build; enabling them renders tofu.
 
 ## vim — `vimrc`
 
@@ -529,6 +619,8 @@ you installed globally (use the same paths you chose above):
 git pull
 sudo cp zshrc /etc/zshrc                       # macOS  (Arch: /etc/zsh/zshrc)
 sudo cp kitty.conf /etc/xdg/kitty/kitty.conf   # if installed globally
+sudo cp gitconfig /etc/gitconfig               # if installed globally
+sudo cp lazygit.yml /etc/xdg/lazygit/config.yml   # required after a lazygit upgrade
 cp claude/statusline.sh ~/.claude/statusline.sh   # per-user, same snapshot rule
 cp claude/themes/catppuccin-mocha.json ~/.claude/themes/
 cp claude/commands/commit.md claude/commands/r.md ~/.claude/commands/
