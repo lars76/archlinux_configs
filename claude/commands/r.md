@@ -13,6 +13,7 @@ allowed-tools: Bash(codex exec:*), Bash(codex review:*), Bash(git status:*), Bas
 - Diff stat: !`git diff HEAD --stat 2>/dev/null | tail -5`
 - Codex: !`command -v codex >/dev/null && codex --version || echo "NOT INSTALLED"`
 - Codex trusts cwd: !`grep -q "\"$PWD\"" ~/.codex/config.toml 2>/dev/null && echo yes || echo "no, needs --skip-git-repo-check"`
+- Run started, epoch seconds: !`date +%s`
 
 ## Request
 
@@ -143,7 +144,8 @@ usage from `jq -c 'select(.type=="turn.completed").usage' <run>.codex.jsonl |
 tail -1`, null when absent (a wrong number is worse than a missing one). Keep
 every key in every mode. Fields, counted ones defined once here:
 
-- ts (`date -Is`), host (`hostname -s`), project, mode, mode_corrected (user
+- ts (`date -Iseconds`; the `-Is` abbreviation is GNU-only and errors on macOS),
+  host (`hostname -s`), project, mode, mode_corrected (user
   changed the inferred mode), gate (the chosen option's label text), lens,
   sandbox (a blind copy was built)
 - codex {model, usage, total: input+output}; claude {reviewer, verifier}
@@ -154,8 +156,11 @@ every key in every mode. Fields, counted ones defined once here:
 - filtered_by {codex, claude, both}: origins of the killed findings
 - corroborated (cross-reviewer merges), disagreements (opposite conclusions on
   one subject), confidence (every score, descending, including killed), severity
-  (one per reported finding, report order), duration_s (gate approval to log
-  write), failures (reviewers that errored), notes: null always, the user's slot
+  (one per reported finding, report order), duration_s (`$(date +%s)` minus the
+  epoch printed under Context above; never a literal you compose yourself and
+  never a parsed timestamp, since `date -d` is GNU-only and `date -j -f` is
+  BSD-only), failures (reviewers that errored), notes: null always, the user's
+  slot
 - next/assess: confidence [], severity [], proposal count in reported, filtered 0
 
 Append-only; if the write fails, say so and keep the report.
