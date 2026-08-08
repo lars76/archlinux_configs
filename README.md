@@ -87,8 +87,10 @@ outcome/duration/CPU footer, tuned history + completion caching, and integration
   file widget stays available there too.
 - **History search:** if `atuin` is installed, **`Ctrl+R`** opens a SQLite-backed
   search UI showing each command's time, directory and exit code; it also feeds the
-  inline autosuggestion. `↑`/`↓` stay on the built-in prefix search. Guarded — no
-  atuin, no change. One-time setup for the matching theme:
+  inline autosuggestion. A single `↑` stays on the built-in prefix search, since
+  the last command is usually the one you want; pressing `↑` **twice in a row**
+  opens the same atuin UI, seeded with whatever you had typed before the first
+  press. Guarded — no atuin, no change. One-time setup for the matching theme:
   ```sh
   mkdir -p ~/.config/atuin/themes && curl -fsSL https://raw.githubusercontent.com/catppuccin/atuin/main/themes/mocha/catppuccin-mocha-mauve.toml -o ~/.config/atuin/themes/catppuccin-mocha-mauve.toml && { grep -qxF '[theme]' ~/.config/atuin/config.toml 2>/dev/null || printf '\n[theme]\nname = "catppuccin-mocha-mauve"\n' >> ~/.config/atuin/config.toml; } && atuin import auto
   ```

@@ -713,19 +713,47 @@ fi
 #
 # Initialised LAST — after zsh-autosuggestions (§8) and zsh-syntax-highlighting
 # (§11) — as the atuin docs require, so its ZLE widgets wrap cleanly over theirs.
-# atuin binds BOTH Ctrl+R and Up/Down: pressing Up (with the line empty or after
-# typing a prefix like "uv ") opens the atuin search UI filtered by that text,
-# instead of silently filling the line. atuin's init also prepends "atuin" to
-# ZSH_AUTOSUGGEST_STRATEGY, so the inline autosuggestion and the search UI draw
-# from the SAME history — set the strategy yourself in ~/.zshrc.local (sourced
-# after this) to opt out. Appearance/theme live in ~/.config/atuin/config.toml
-# (Catppuccin Mocha, matching the shell). The Up-key search honours the
-# filter_mode_shell_up_key_binding / search_mode_shell_up_key_binding settings.
+# atuin binds BOTH Ctrl+R and Up by default, so a single Up press pops the full
+# search UI. That is too eager: the first Up is nearly always "give me the last
+# command". So atuin's own Up binding is disabled (--disable-up-arrow, Ctrl+R is
+# untouched) and Up goes to a small wrapper instead: the FIRST press does the
+# ordinary prefix search from §9 (fills the line silently), and a SECOND press
+# straight after opens the atuin UI, seeded with whatever was typed BEFORE the
+# first press — so "uv" + Up + Up searches atuin for "uv", not for the recalled
+# line. Any other key in between re-arms the wrapper. atuin's init also prepends
+# "atuin" to ZSH_AUTOSUGGEST_STRATEGY, so the inline autosuggestion and the
+# search UI draw from the SAME history — set the strategy yourself in
+# ~/.zshrc.local (sourced after this) to opt out. Appearance/theme live in
+# ~/.config/atuin/config.toml (Catppuccin Mocha, matching the shell). The Up-key
+# search still honours filter_mode_shell_up_key_binding /
+# search_mode_shell_up_key_binding, since it runs atuin's own up-search widget.
 if command -v atuin >/dev/null 2>&1; then
-  eval "$(atuin init zsh)"
-  # atuin 18.x binds '?' (on an empty line) to an AI feature that needs an atuin
-  # account; restore '?' as an ordinary self-inserting character.
-  bindkey -M emacs '?' self-insert 2>/dev/null
+  # --disable-ai stops atuin >= 18.13 binding '?' (on an empty line) to its AI
+  # UI, which needs an atuin account. That flag shipped with the feature itself,
+  # so an atuin old enough to reject it never binds '?' in the first place —
+  # hence the plain retry rather than a version check.
+  _atuin_init=$(atuin init zsh --disable-up-arrow --disable-ai 2>/dev/null) ||
+    _atuin_init=$(atuin init zsh --disable-up-arrow)
+  eval "$_atuin_init"
+  unset _atuin_init
+
+  _atuin_up_or_search() {
+    if [[ $LASTWIDGET == _atuin_up_or_search && -n $_atuin_up_armed ]]; then
+      _atuin_up_armed=''
+      BUFFER=$_atuin_up_prefix
+      CURSOR=${#BUFFER}
+      zle atuin-up-search
+    else
+      _atuin_up_armed=1
+      _atuin_up_prefix=$BUFFER
+      zle up-line-or-beginning-search
+    fi
+  }
+  zle -N _atuin_up_or_search
+  # Both the normal and the application-cursor-mode Up sequence, since atuin's
+  # init used to claim '^[OA' too and nothing else binds it.
+  bindkey -M emacs '^[[A' _atuin_up_or_search
+  bindkey -M emacs '^[OA' _atuin_up_or_search
 fi
 
 # §12. USER PATH & LOCAL OVERRIDES
