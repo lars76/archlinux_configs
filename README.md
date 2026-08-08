@@ -47,9 +47,9 @@ Everything at once:
 
 ```sh
 # macOS
-brew install vivid eza bat ripgrep fzf zoxide direnv uv fastfetch atuin zsh-autosuggestions zsh-syntax-highlighting zsh-history-substring-search git-delta lazygit && brew install --cask font-jetbrains-mono
+brew install vivid eza bat ripgrep fzf fd zoxide direnv uv fastfetch atuin zsh-autosuggestions zsh-syntax-highlighting zsh-history-substring-search git-delta lazygit && brew install --cask font-jetbrains-mono
 # Arch
-yay -S vivid eza bat ripgrep fzf zoxide direnv uv fastfetch atuin zsh-autosuggestions zsh-syntax-highlighting zsh-history-substring-search git-delta lazygit ttf-jetbrains-mono
+yay -S vivid eza bat ripgrep fzf fd zoxide direnv uv fastfetch atuin zsh-autosuggestions zsh-syntax-highlighting zsh-history-substring-search git-delta lazygit ttf-jetbrains-mono
 ```
 
 ## zsh — `zshrc`
@@ -244,14 +244,15 @@ Per-user only; everything lives under `~/.claude`, identically on Arch and macOS
 Run this once per account:
 
 ```sh
-mkdir -p ~/.claude/themes ~/.claude/commands
+mkdir -p ~/.claude/themes ~/.claude/commands ~/.claude/workflows
 cp claude/statusline.sh ~/.claude/statusline.sh
 chmod +x ~/.claude/statusline.sh
 cp claude/themes/catppuccin-mocha.json ~/.claude/themes/
 cp claude/commands/*.md ~/.claude/commands/
+cp claude/workflows/r-verify.js ~/.claude/workflows/
 cp claude/draft-check.py ~/.claude/draft-check.py
 cp claude/CLAUDE.md ~/.claude/CLAUDE.md
-sed "s|__HOME__|$HOME|" claude/settings.json > ~/.claude/settings.json
+sed "s|__HOME__|$HOME|g" claude/settings.json > ~/.claude/settings.json
 ```
 
 There is a machine-wide managed path (`/etc/claude-code/` on Linux,
