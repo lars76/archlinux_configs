@@ -7,30 +7,32 @@ set nocompatible
 " §1. Plugin Manager: vim-plug
 " =============================================================================
 " Auto-install vim-plug if it's not present.
-if empty(glob('~/.vim/autoload/plug.vim'))
+if empty(glob('~/.vim/autoload/plug.vim')) && $USER !=# 'root'
   silent !curl -fLo ~/.vim/autoload/plug.vim --create-dirs https://raw.githubusercontent.com/junegunn/vim-plug/master/plug.vim
   autocmd VimEnter * PlugInstall --sync | source $MYVIMRC
 endif
 
-call plug#begin('~/.vim/plugged')
+if !empty(glob('~/.vim/autoload/plug.vim'))
+  call plug#begin('~/.vim/plugged')
 
-" --- Core & Appearance (Load on Startup) ---
-Plug 'tpope/vim-sensible'              " A collection of sensible default settings.
-Plug 'sheerun/vim-polyglot'             " A huge collection of language syntax packs.
-Plug 'vim-airline/vim-airline'          " Advanced status line.
-Plug 'vim-airline/vim-airline-themes'   " Themes for the status line.
-Plug 'jiangmiao/auto-pairs'            " Auto-close brackets and quotes.
-Plug 'catppuccin/vim', { 'as': 'catppuccin' }  " Catppuccin colorscheme (mocha).
-Plug 'airblade/vim-gitgutter'          " Git diff signs — loads eagerly so signs appear automatically.
+  " --- Core & Appearance (Load on Startup) ---
+  Plug 'tpope/vim-sensible'              " A collection of sensible default settings.
+  Plug 'sheerun/vim-polyglot'             " A huge collection of language syntax packs.
+  Plug 'vim-airline/vim-airline'          " Advanced status line.
+  Plug 'vim-airline/vim-airline-themes'   " Themes for the status line.
+  Plug 'jiangmiao/auto-pairs'            " Auto-close brackets and quotes.
+  Plug 'catppuccin/vim', { 'as': 'catppuccin' }  " Catppuccin colorscheme (mocha).
+  Plug 'airblade/vim-gitgutter'          " Git diff signs — loads eagerly so signs appear automatically.
 
-" --- Functionality (Lazy-Loaded for Speed) ---
-" These plugins will only be loaded when their command is first used.
-Plug 'tpope/vim-fugitive',   { 'on': ['G', 'Git'] }         " The best Git plugin for Vim.
-Plug 'preservim/nerdtree',    { 'on': 'NERDTreeToggle' }    " A file system explorer.
-Plug 'junegunn/fzf',         { 'do': { -> fzf#install() } } " Core fuzzy-finder program.
-Plug 'junegunn/fzf.vim',     { 'on': ['Files', 'Buffers', 'Rg'] } " Vim commands for FZF.
+  " --- Functionality (Lazy-Loaded for Speed) ---
+  " These plugins will only be loaded when their command is first used.
+  Plug 'tpope/vim-fugitive',   { 'on': ['G', 'Git'] }         " The best Git plugin for Vim.
+  Plug 'preservim/nerdtree',    { 'on': 'NERDTreeToggle' }    " A file system explorer.
+  Plug 'junegunn/fzf',         { 'do': { -> fzf#install() } } " Core fuzzy-finder program.
+  Plug 'junegunn/fzf.vim',     { 'on': ['Files', 'Buffers', 'Rg'] } " Vim commands for FZF.
 
-call plug#end()
+  call plug#end()
+endif
 
 
 " =============================================================================
@@ -58,7 +60,9 @@ endif
 " installed the plugin — and the post-install re-source then applies it for real.
 set background=dark
 silent! colorscheme catppuccin_mocha
-let g:airline_theme = 'catppuccin_mocha'
+if !empty(globpath(&runtimepath, 'autoload/airline/themes/catppuccin_mocha.vim'))
+  let g:airline_theme = 'catppuccin_mocha'
+endif
 set laststatus=2        " Always show the status line.
 set showmatch           " Briefly jump to matching bracket.
 set showcmd             " Show partial commands in the last line of the screen.
