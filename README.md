@@ -213,8 +213,8 @@ Plugins auto-install on first launch via
 
 ## SSH — `ssh_config`
 
-Per-user only — appends `Host` aliases (`ssh laptop`, `ssh phone`) instead of
-memorizing IPs, which drift on most routers.
+Per-user only — appends `Host` aliases (`ssh laptop`, `ssh mac`, `ssh phone`)
+instead of memorizing IPs, which drift on most routers.
 
 | Target | Command |
 | --- | --- |
@@ -225,6 +225,9 @@ memorizing IPs, which drift on most routers.
   as the IP changes. Confirm with `ping YOUR-DEVICE.lan` first.
 - Requires key-based auth already set up: copy each device's public key into
   the other's `~/.ssh/authorized_keys` beforehand.
+- **macOS:** sshd is installed but off by default — turn it on with
+  `sudo systemsetup -setremotelogin on`, or System Settings → General →
+  Sharing → Remote Login.
 - **Android:** install Termux from
   [GitHub](https://github.com/termux/termux-app/releases/latest) or F-Droid
   (same signing key either way — needed if you ever add official plugins

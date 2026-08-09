@@ -7,6 +7,10 @@ Host laptop
     HostName YOUR-LAPTOP.lan
     User YOUR-LAPTOP-USER
 
+Host mac
+    HostName YOUR-MAC.lan
+    User YOUR-MAC-USER
+
 Host phone
     HostName YOUR-PHONE.lan
     User YOUR-PHONE-USER
