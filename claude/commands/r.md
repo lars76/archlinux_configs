@@ -67,14 +67,17 @@ files actually read. State read-only in the prompt even though it is enforced.
 
 Codex, in background, capture teed:
 
-    codex exec -s read-only --ephemeral --json -m gpt-5.6-sol --skip-git-repo-check \
+    codex exec -s read-only --json -m gpt-5.6-sol --skip-git-repo-check \
       -C <root> -o ~/.claude/reviews/<project>-<ts>.md "<prompt>" < /dev/null \
       | tee ~/.claude/reviews/<project>-<ts>.codex.jsonl
 
 Load-bearing details: the prompt is the positional argument and stdin is
 /dev/null (piped stdin is appended to the prompt; empty stdin with no argument
 means it runs on nothing); never --add-dir (it grants writes); --json plus tee
-captures the turn.completed event that carries usage and signals completion.
+captures the turn.completed event that carries usage and signals completion;
+never --ephemeral, which suppresses the session rollout that is the only place
+Codex records the 5-hour and weekly limits, making the run's spend invisible to
+the status line even though its token counts still arrive here.
 If Codex is not installed, say so and offer a Claude-only run.
 
 Claude reviewer: one Agent, subagent_type Explore, model opus, same prompt and
