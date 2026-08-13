@@ -249,12 +249,13 @@ Per-user only; everything lives under `~/.claude`, identically on Arch and macOS
 Run this once per account:
 
 ```sh
-mkdir -p ~/.claude/themes ~/.claude/commands ~/.claude/workflows
-cp claude/statusline.sh ~/.claude/statusline.sh
-chmod +x ~/.claude/statusline.sh
+mkdir -p ~/.claude/themes ~/.claude/commands ~/.claude/workflows ~/.claude/skills/ask-codex
+cp claude/statusline.sh claude/codex-ask.sh ~/.claude/
+chmod +x ~/.claude/statusline.sh ~/.claude/codex-ask.sh
 cp claude/themes/catppuccin-mocha.json ~/.claude/themes/
 cp claude/commands/*.md ~/.claude/commands/
 cp claude/workflows/r-verify.js ~/.claude/workflows/
+cp claude/skills/ask-codex/SKILL.md ~/.claude/skills/ask-codex/
 cp claude/draft-check.py ~/.claude/draft-check.py
 cp claude/CLAUDE.md ~/.claude/CLAUDE.md
 sed "s|__HOME__|$HOME|g" claude/settings.json > ~/.claude/settings.json
@@ -269,9 +270,11 @@ branch, and Claude no longer being able to edit its own instructions.
 
 `settings.json` carries preferences only: model, effort level, permission mode,
 the theme, the renderer, the editor mode, auto memory off, the two LSP plugins,
-git attribution, the status line, and the `draft-check.py` hook. The `__HOME__`
-placeholder is the one path that has to be rewritten at install time, hence the
-`sed`.
+git attribution, the status line, and the `draft-check.py` hook. Its allow list
+is three entries, all of them for scripts installed above (`codex-ask.sh` and the
+two `draft-check` flag commands), so nothing in it grants reach beyond this
+setup. The `__HOME__` placeholder is the one path that has to be rewritten at
+install time, hence the `sed`.
 
 `autoMemoryEnabled: false` turns off the notes Claude writes itself under
 `~/.claude/projects/<repo>/memory/`. Off because those notes are specific factual
@@ -617,6 +620,25 @@ about tokens.
   authentication; model and reasoning effort come from `~/.codex/config.toml`.
   Without it, `/r` says so and offers a Claude-only run. Reviews are written to
   `~/.claude/reviews/`.
+- **`codex-ask.sh`** and **`skills/ask-codex/`** reach the same second opinion
+  outside `/r`, for the cases that do not need two reviewers and a verification
+  pass: one brief in, one answer out, no follow-up turn. The wrapper runs
+  `codex exec -s read-only` against a root directory and a brief file, prints the
+  answer on stdout and nothing else, and keeps the answer, the event stream as
+  JSONL, and stderr under `~/.claude/codex/`. Exit codes carry the distinction
+  that matters: non-zero with no answer means Codex never wrote a final message,
+  non-zero with one means the turn was cut short and the answer is partial rather
+  than worthless.
+
+  `SKILL.md` is the half that does the work. Codex shares nothing with the
+  session, which is exactly why its answer is worth having and exactly what makes
+  a thin brief useless, so the skill enumerates what every brief must carry: the
+  question, where to look (paths, not pasted excerpts), the constraints, what was
+  already ruled out and why, and the shape the answer should take. It also says
+  to run the wrapper in the background, since a serious brief outlives the Bash
+  tool's ten-minute ceiling. Same Codex CLI and authentication as `/r`, and
+  `settings.json` pre-approves `Bash(~/.claude/codex-ask.sh:*)` so a run needs no
+  permission prompt.
 - **Plugins** (`pyright-lsp`, `clangd-lsp`) reinstall themselves on first run
   from Anthropic's built-in marketplace — nothing to copy. They need `pyright`
   and `clangd` on the system to do anything.
@@ -641,10 +663,11 @@ sudo cp zshrc /etc/zshrc                       # macOS  (Arch: /etc/zsh/zshrc)
 sudo cp kitty.conf /etc/xdg/kitty/kitty.conf   # if installed globally
 sudo cp gitconfig /etc/gitconfig               # if installed globally
 sudo cp lazygit.yml /etc/xdg/lazygit/config.yml   # required after a lazygit upgrade
-cp claude/statusline.sh ~/.claude/statusline.sh   # per-user, same snapshot rule
+cp claude/statusline.sh claude/codex-ask.sh ~/.claude/   # per-user, same snapshot rule
 cp claude/themes/catppuccin-mocha.json ~/.claude/themes/
 cp claude/commands/commit.md claude/commands/r.md ~/.claude/commands/
 mkdir -p ~/.claude/workflows && cp claude/workflows/r-verify.js ~/.claude/workflows/
+mkdir -p ~/.claude/skills/ask-codex && cp claude/skills/ask-codex/SKILL.md ~/.claude/skills/ask-codex/
 cp claude/draft-check.py ~/.claude/draft-check.py
 cp claude/CLAUDE.md ~/.claude/CLAUDE.md
 sed "s|__HOME__|$HOME|g" claude/settings.json > ~/.claude/settings.json
