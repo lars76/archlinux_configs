@@ -135,6 +135,25 @@
 # also sidesteps the GNU/BSD -d-vs--r split; arithmetic is zsh's own floating
 # point.
 #
+# Codex reports its own limits, and none of the three sources above carries
+# them. There is no endpoint and no subcommand: they exist only inside its
+# session rollouts, in the last token_count event of the newest file under
+# ~/.codex/sessions. A reading therefore refreshes when Codex runs and at no
+# other time, which is why the hour-old rule is not applied to those rows.
+# Nothing can be polled, so an old reading is the only reading there will be
+# until the next run, and it is still sound for the reason the merge above
+# already relies on: utilization only rises inside a window, so a stale figure
+# is a lower bound rather than a wrong one. The reset test alone decides, and a
+# row whose window has rolled over vanishes rather than describing a budget that
+# no longer exists.
+#
+# Those rollouts are also why codex-ask.sh does not pass --ephemeral. The flag
+# suppresses the session file, and with it every trace of what the run spent.
+#
+# Which windows exist is read rather than assumed. The field named primary has
+# been the weekly one on every rollout observed, with secondary null, so the
+# label comes from window_minutes and both slots are walked.
+#
 # Requires: zsh 5.x, jq. curl only for the usage endpoint, without which the
 # limits fall back to stdin's two windows. Portable across Linux and macOS.
 
@@ -168,6 +187,13 @@ USAGE_URL='https://api.anthropic.com/api/oauth/usage'
 FETCH_TTL=300       # seconds before a cached response is polled again
 RETRY_TTL=30        # floor between attempts while one keeps failing
 MAX_AGE=3600        # seconds a reading may lag and still be worth showing
+
+# CODEX_HOME relocates the whole directory, so it is what decides where the
+# rollouts are. ~/.codex is only its default, and hardcoding that would leave
+# the row permanently blank on a box that sets it.
+CODEX_SESSIONS=${CODEX_HOME:-$HOME/.codex}/sessions
+CODEX_TAIL=300000   # bytes off the end of a rollout searched for token_count
+CODEX_SCAN=8        # rollouts walked back before giving up on finding one
 
 # Catppuccin Mocha, to match kitty and vim. Peach has no slot among the ANSI 16,
 # so the palette is only exact under truecolor; elsewhere fall back to the
@@ -265,6 +291,84 @@ api='null'
 [[ -r $cache ]] && api=$(<$cache)
 [[ -n $api ]] || api='null'
 
+# ─── codex rollouts ──────────────────────────────────────────────────────────
+# Keyed on the newest rollout's mtime rather than on a clock, because the file
+# only changes when Codex runs and re-reading an unchanged one cannot say
+# anything new. A refresh that finds nothing newer costs one glob and one read
+# of a small cache, which is what keeps this off the five-second path.
+#
+# The extraction is bounded to the tail. Rollouts reach a megabyte and the whole
+# transcript is in them; only the last token_count is wanted, and reading the
+# rest to find it would put the cost back.
+#
+# That the attempt happened is recorded by a marker of its own, not by the
+# cache, because the two are different facts and folding them together cost a
+# reading. About one rollout in twenty carries no token_count at all, and not
+# from a crash: a complete run that simply never emitted the event. Writing that
+# empty result into the cache did mark the attempt, but it also destroyed a
+# perfectly good earlier figure describing a window that had not reset, and gaps
+# between Codex runs here reach three weeks. The row went blank while a valid
+# lower bound sat one file further back. So the cache now receives readings
+# only, and a fruitless extraction moves nothing.
+#
+# For the same reason the scan walks back instead of giving up on the newest
+# file, and CODEX_SCAN bounds how far, so a run of eventless rollouts cannot
+# turn one refresh into a directory crawl.
+#
+# Finding no token_count and finding one that reports no limits are opposite
+# facts and are treated as such. The first is absence of evidence and the scan
+# continues past it. The second is evidence of absence — the plan has no limits
+# to report — and it is cached like any other reading, which is what still lets
+# the row disappear when a plan lapses rather than showing last week's number.
+#
+# grep -a because a rollout embeds whatever the tools it ran printed. None here
+# contains a NUL today, but one byte of it anywhere in the slice would make grep
+# report a binary match and print nothing, and the reading would vanish with no
+# error to say why. GNU and BSD grep both take the flag.
+#
+# The comparison admits equality because both sides are whole seconds. A rollout
+# whose final event lands in the same second as the attempt that read it would
+# otherwise be pinned out of consideration permanently, neither mtime ever
+# moving again. Equality costs at most one extra extraction inside that second.
+
+codex_cache=$cache_dir/codex.json
+codex_marker=$cache_dir/.codex_attempt
+codex_rolls=( $CODEX_SESSIONS/**/rollout-*.jsonl(Nom) )
+
+if (( $#codex_rolls )); then
+  mtime $codex_rolls[1]; integer roll_at=$REPLY
+  mtime $codex_marker;   integer tried_at=$REPLY
+  if (( roll_at >= tried_at )); then
+    mkdir -p -- $cache_dir 2>/dev/null
+    : >| $codex_marker 2>/dev/null
+    ctmp=$codex_cache.$$.tmp
+    integer scanned=0
+    for roll in $codex_rolls; do
+      (( ++scanned > CODEX_SCAN )) && break
+      evt=$(tail -c $CODEX_TAIL -- $roll | grep -a '"token_count"' | tail -1)
+      [[ -n $evt ]] || continue
+      if print -r -- $evt | jq -c '.payload.rate_limits // null' >| $ctmp 2>/dev/null \
+         && [[ -s $ctmp ]]; then
+        mv -f -- $ctmp $codex_cache 2>/dev/null
+      fi
+      break
+    done
+    rm -f -- $ctmp 2>/dev/null
+  fi
+fi
+
+# Gated on the rollouts still being there, because the cache outlives them. A
+# reading is evidence about a budget, and once the thing that produced it has
+# been uninstalled there is no budget left to describe — without this the row
+# would survive the removal of ~/.codex and sit there until its window happened
+# to roll over, which is up to a week of reporting a quota that is not yours to
+# spend. Cheap, since the glob has already been done.
+codex_rl='null'
+if (( $#codex_rolls )); then
+  [[ -r $codex_cache ]] && codex_rl=$(<$codex_cache)
+  [[ -n $codex_rl ]] || codex_rl='null'
+fi
+
 # --rawfile with fromjson? rather than --slurpfile: a half-written ~/.claude.json
 # would otherwise fail the one jq invocation the whole line depends on.
 cc_file=$HOME/.claude.json
@@ -289,11 +393,12 @@ pub='null'
 dir=$PWD ctx=0 model='' effort=''
 five_pct=-1 five_reset=0 week_pct=-1 week_reset=0
 scoped_names=() scoped_pcts=() scoped_resets=()
+codex_names=() codex_pcts=() codex_resets=() codex_windows=()
 publish=''
 
 assigns=$(jq -r --argjson api "$api" --rawfile cc $cc_file --argjson pub "$pub" \
              --argjson now $EPOCHSECONDS --argjson api_age $api_age \
-             --argjson max_age $MAX_AGE '
+             --argjson max_age $MAX_AGE --argjson codex "$codex_rl" '
   # Round, do not truncate: stdin holds Math.round of the same instant, and
   # truncating strands the two a second apart whenever the fraction is past half.
   # capture emits nothing when there is no fraction, which // absorbs.
@@ -394,6 +499,24 @@ assigns=$(jq -r --argjson api "$api" --rawfile cc $cc_file --argjson pub "$pub" 
       | map({n: .[0].n} + merge(.))
       | map(select(.p >= 0)) ) as $sc
 
+  # Codex, from the rollout alone and deliberately without the age test the
+  # merge above applies: nothing polls this, so the only question left worth
+  # asking is whether the window is still open. Both slots are walked and the
+  # label derived from the window, since which slot holds which is not fixed.
+  | ( [ ($codex // {}) | (.primary, .secondary)
+        | select(type == "object" and .used_percent != null and .window_minutes != null)
+        | {n: (.window_minutes as $m
+               | if   $m == 300        then "Codex 5h"
+                 elif $m == 10080      then "Codex 7d"
+                 elif ($m % 1440) == 0 then "Codex " + (($m / 1440) | tostring) + "d"
+                 elif ($m % 60) == 0   then "Codex " + (($m / 60)   | tostring) + "h"
+                 else                       "Codex " + ($m          | tostring) + "m"
+                 end),
+           p: .used_percent,
+           r: (.resets_at // 0),
+           w: (.window_minutes * 60)}
+        | select(.r > $now) ] ) as $cx
+
   | @sh "dir=\($in.workspace.current_dir // "?")",
     @sh "ctx=\($in.context_window.used_percentage // 0)",
     @sh "model=\($in.model.display_name // "")",
@@ -405,6 +528,10 @@ assigns=$(jq -r --argjson api "$api" --rawfile cc $cc_file --argjson pub "$pub" 
     "scoped_names=("   + ([$sc[].n] | map(@sh)      | join(" ")) + ")",
     "scoped_pcts=("    + ([$sc[].p] | map(tostring) | join(" ")) + ")",
     "scoped_resets=("  + ([$sc[].r] | map(tostring) | join(" ")) + ")",
+    "codex_names=("    + ([$cx[].n] | map(@sh)      | join(" ")) + ")",
+    "codex_pcts=("     + ([$cx[].p] | map(tostring) | join(" ")) + ")",
+    "codex_resets=("   + ([$cx[].r] | map(tostring) | join(" ")) + ")",
+    "codex_windows=("  + ([$cx[].w] | map(tostring) | join(" ")) + ")",
     @sh "publish=\($newpub | if . == null then "" else tojson end)"
 ' <<< $input 2>/dev/null) && eval "$assigns"
 
@@ -430,6 +557,12 @@ fi
 integer LBL_W=10
 for n in $scoped_names; do
   (( ${#n} + 5 > LBL_W )) && LBL_W=$(( ${#n} + 5 ))
+done
+# Codex labels arrive complete, so they need the colon and the gap and nothing
+# else. "Codex 7d" lands exactly on the default width; a longer window name must
+# still be able to widen the column rather than push the grid out of line.
+for n in $codex_names; do
+  (( ${#n} + 2 > LBL_W )) && LBL_W=$(( ${#n} + 2 ))
 done
 
 # Everything but the bar costs LBL_W + 38 columns: three gaps of three, four
@@ -609,6 +742,14 @@ limit_row 'Weekly:' $week_pct $week_reset $ONE_WEEK  && out+=$'\n'$REPLY
 # empty, which would render two garbage rows offline.
 for (( i = 1; i <= $#scoped_names; i++ )); do
   limit_row "$scoped_names[i] 7d:" $scoped_pcts[i] $scoped_resets[i] $ONE_WEEK \
+    && out+=$'\n'$REPLY
+done
+
+# Codex last, and carrying its own window length rather than $ONE_WEEK: the
+# rows above are all Anthropic budgets, this one is a separate account that no
+# amount of Claude usage can move, and its windows are whatever it reports.
+for (( i = 1; i <= $#codex_names; i++ )); do
+  limit_row "$codex_names[i]:" $codex_pcts[i] $codex_resets[i] $codex_windows[i] \
     && out+=$'\n'$REPLY
 done
 
