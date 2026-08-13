@@ -11,6 +11,7 @@
   "permissions": {
     "allow": [
       "WebFetch",
+      "Bash(~/.claude/codex-ask.sh:*)",
       "Bash(touch ~/.cache/claude-no-draft-check-*)",
       "Bash(rm -f ~/.cache/claude-no-draft-check-*)"
     ],
