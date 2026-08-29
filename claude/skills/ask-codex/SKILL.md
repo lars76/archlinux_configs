@@ -88,6 +88,11 @@ which are Codex's.
   trail survive the run, but the wrapper never resumes one. To go deeper, write
   a new brief that quotes the previous answer and says what you want pushed on.
 - Read-only, hardcoded in the wrapper. It cannot edit, install, or run a build.
-- No network. It cannot look anything up; it only has the disk and its training.
+- It has web search. `-s read-only` sandboxes the filesystem, not the network,
+  so it will look things up, and a brief can point it at documentation for a
+  library too niche to be in its training data. Two consequences: a run that
+  searches takes considerably longer, and search queries carry fragments of
+  what you asked about to a third-party service, so brief it accordingly on
+  anything confidential.
 - Not for what tooling answers better and faster: types, formatting, whether the
   tests pass. Ask it things that need judgment.
