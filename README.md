@@ -284,12 +284,14 @@ Measured cost of the memory preamble on 2.1.220 is 684 tokens, not the 11 to 16k
 an open bug report claims, so this is a decision about stale facts rather than
 about tokens.
 
-- **`CLAUDE.md`** is eight lines of standing instructions, loaded at the start of
-  every session in every repository. It says not to write docstrings, tests, or
-  type annotations until they are asked for, not to delete existing ones, not to
-  add a private one-line helper that could be inlined, to target Python 3.13 or
-  newer unless a project's `requires-python` says otherwise, and to avoid
-  em-dashes and emoji. Keep it short: the file is loaded in full on every request,
+- **`CLAUDE.md`** is fourteen lines of standing instructions, loaded at the start
+  of every session in every repository. It says not to write docstrings, tests,
+  or type annotations until they are asked for, not to delete existing ones, not
+  to add a private one-line helper that could be inlined, to target Python 3.13
+  or newer unless a project's `requires-python` says otherwise, to avoid
+  em-dashes and emoji, and to ask before creating a branch. It also says to
+  answer a question without editing, to keep cleanups to removals, to test a
+  claim before making it, and to write short plain prose. Keep it short: the file is loaded in full on every request,
   and a long one gets ignored in the middle.
 
 - **`draft-check.py`** is the `PostToolUse` hook that backs the checkable lines of
@@ -582,9 +584,9 @@ about tokens.
   The plan shown before the gate is three sentences — what gets read, what is
   withheld when blind, what comes back — with the command lines kept in `r.md`
   where the executor needs them rather than printed at you. Everything is
-  fixed — Codex on `gpt-5.6-sol`, the reviewer on Opus, verifiers on Sonnet —
-  and nothing is offered as a choice, though anything can be changed by saying
-  so. The one exception is the mode, which the gate's options let you correct
+  fixed — Codex on `gpt-6-astra` at `xhigh`, the reviewer on Opus, verifiers on
+  Sonnet — and nothing is offered as a choice, though anything can be changed by
+  saying so. The one exception is the mode, which the gate's options let you correct
   with one keypress. Approval runs through a prompt rather than by waiting for a
   reply, which is not a stylistic choice: a command's tool permissions last only
   for the turn that invoked it, so stopping to wait for the word "go" would
@@ -617,9 +619,9 @@ about tokens.
   testing numerically — writes land there, the project stays untouched.
 
   Needs the Codex CLI (`yay -S codex` / `npm i -g @openai/codex`) and its own
-  authentication; model and reasoning effort come from `~/.codex/config.toml`.
-  Without it, `/r` says so and offers a Claude-only run. Reviews are written to
-  `~/.claude/reviews/`.
+  authentication; `r.md` pins the model and reasoning effort, so
+  `~/.codex/config.toml` does not change them. Without it, `/r` says so and
+  offers a Claude-only run. Reviews are written to `~/.claude/reviews/`.
 - **`codex-ask.sh`** and **`skills/ask-codex/`** reach the same second opinion
   outside `/r`, for the cases that do not need two reviewers and a verification
   pass: one brief in, one answer out, no follow-up turn. The wrapper runs
