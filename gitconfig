@@ -3,7 +3,7 @@
 
 [core]
 	pager = delta
-	fsmonitor = true
+	fsmonitor = false
 	untrackedCache = true
 
 [interactive]
