@@ -1,14 +1,14 @@
 ---
 name: ask-codex
-description: Hand one self-contained task to Codex (GPT-5.6-sol, read-only, no session context) and get a single written answer back. Use whenever an outside opinion beats another pass by this session: reviewing a proposal before it is built, reviewing an implementation after it is, researching how something works, critiquing a design, checking a claim against the code, or an autonomous loop step that wants a second reviewer. Triggers on "ask Codex", "second opinion", "have Codex look at", "what would Codex say".
+description: Hand one self-contained task to Codex (GPT-6-astra at xhigh effort, read-only, no session context) and get a single written answer back. Use whenever an outside opinion beats another pass by this session: reviewing a proposal before it is built, reviewing an implementation after it is, researching how something works, critiquing a design, checking a claim against the code, or an autonomous loop step that wants a second reviewer. Triggers on "ask Codex", "second opinion", "have Codex look at", "what would Codex say".
 ---
 
 # Ask Codex
 
-Codex is a second agent, not a tool call. It runs `gpt-5.6-sol` at the reasoning
-effort in `~/.codex/config.toml`, reads any file it wants, writes nothing, and
-shares nothing with this session. One brief in, one answer out, no follow-up
-turn.
+Codex is a second agent, not a tool call. It runs `gpt-6-astra` at `xhigh`
+reasoning effort (pinned in `codex-ask.sh`), reads any file it wants, writes
+nothing, and shares nothing with this session. One brief in, one answer out, no
+follow-up turn.
 
 That isolation is the point and the trap. Its answer is worth having precisely
 because it did not watch you get here. It is worthless when it did not know

@@ -31,6 +31,7 @@ run=$out/$label-$(date +%Y%m%dT%H%M%S)-$$
 
 status=0
 codex exec -s read-only --skip-git-repo-check --color never \
+    -m gpt-6-astra -c model_reasoning_effort=xhigh \
     -C "$root" -o "$run.answer.md" --json - \
     < "$brief" > "$run.jsonl" 2> "$run.err" || status=$?
 

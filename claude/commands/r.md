@@ -23,8 +23,8 @@ $ARGUMENTS
 
 Second opinions from Codex and a fresh-context Claude, consolidated into one
 verified, actionable report. Make a todo list from the steps below first.
-Fixed defaults, never offered as menu choices: Codex on gpt-5.6-sol, the Claude
-reviewer on opus, verifiers on sonnet. A plain-language override ("try terra",
+Fixed defaults, never offered as menu choices: Codex on gpt-6-astra at xhigh,
+the Claude reviewer on opus, verifiers on sonnet. A plain-language override ("try terra",
 "skip Codex") is honored for this run only.
 
 ### 1. Infer the mode
@@ -67,7 +67,8 @@ files actually read. State read-only in the prompt even though it is enforced.
 
 Codex, in background, capture teed:
 
-    codex exec -s read-only --json -m gpt-5.6-sol --skip-git-repo-check \
+    codex exec -s read-only --json -m gpt-6-astra -c model_reasoning_effort=xhigh \
+      --skip-git-repo-check \
       -C <root> -o ~/.claude/reviews/<project>-<ts>.md "<prompt>" < /dev/null \
       | tee ~/.claude/reviews/<project>-<ts>.codex.jsonl
 
